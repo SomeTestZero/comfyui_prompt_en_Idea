@@ -13,7 +13,7 @@ IDEA_SYSTEM = """You are a screenwriter for short AI-generated videos. Write a s
 Rules:
 - The user's request defines the story: its subject, style, pacing, shot count, and any explicit requirements are mandatory - build everything around them. Whatever the user left open, invent freely and concretely (characters, actions, scene details).
 - The draft is the only thing the downstream prompt writer ever sees - the user's original words never reach it. Restate every explicit requirement from the request or the given ingredients (style/genre, shot policy such as a single continuous take with no cuts, pacing, mood, anything insisted on) in the opening line of the draft, in the user's own words plus the standard English production term in parentheses when one exists, e.g. "风格：动漫（2D-animated）；镜头：单镜头一镜到底（one continuous take, no cuts），只运镜". A requirement not written in the draft is lost.
-- Format: the opening line (explicit requirements if any, then the setup: subject / setting / tone), then the story as shot beats. Default to a shot-by-shot breakdown with framing, the key action, and any spoken lines in quotes - unless the user asked otherwise (e.g. a single long take). When the story is one continuous take, write it as one unbroken passage of camera choreography and action with no shot numbering - numbered beats (镜头1、镜头2…) read as cuts to the downstream prompt writer.
+- Format: the opening line (explicit requirements if any, then the setup: subject / setting / tone), then the story as shot beats. Default to a shot-by-shot breakdown with framing, the key action, and any spoken lines in quotes - unless the user asked otherwise (e.g. a single long take). When the story is one continuous take, write it as one continuous narration with no shot numbering - natural paragraph breaks are fine, but numbered beats (镜头1、镜头2…) read as cuts to the downstream prompt writer.
 - Fit the {duration}-second runtime: everything in it — actions, shot changes, spoken lines — must be playable within {duration} seconds at a natural pace.{image_note}
 - Write in {language}.
 - Output ONLY the story draft. No title, no commentary, no markdown headers."""
@@ -30,9 +30,12 @@ MODE_GUIDANCE = {
 IDEA_MAX_TOKENS = -1
 
 # Random-mode ingredient pools. The seed picks the combination, the model only
-# weaves them — this keeps "random" actually random instead of collapsing onto
-# the model's few favorite tropes. With images connected, subject/setting come
-# from the pictures, so only TWISTS and MOODS are drawn.
+# weaves them - this keeps "random" actually random instead of collapsing onto
+# the model's few favorite tropes. EVENTS mixes quiet, everyday, humorous, and
+# a few surreal happenings: it guarantees the story has a core to hang on
+# without forcing a twist - an all-surprise pool plus a mandatory-turn
+# instruction made every draft jump-scare-shaped. With images connected,
+# subject/setting come from the pictures, so only EVENTS and MOODS are drawn.
 GENRES = [
     "科幻", "奇幻", "日常治愈", "悬疑", "冒险", "轻喜剧", "自然纪录片", "历史古装", "赛博朋克", "童话",
     "都市传说", "太空歌剧", "末世废土", "武侠", "蒸汽朋克", "海洋探险", "微观世界", "怪谈", "美食纪录", "时间循环",
@@ -49,12 +52,14 @@ SETTINGS = [
     "地下溶洞暗河", "台风来临前的海边", "雪夜的温泉旅馆", "满是藤蔓的旧游乐园", "空间站观景舱",
     "黄昏的麦田", "凌晨的机场候机厅", "梅雨季节的老巷", "火山脚下的村庄", "无边无际的盐沼",
 ]
-TWISTS = [
-    "捡到一台还能放映的老胶片机", "收到一封寄给十年后的信", "发现门后是一片海", "所有钟表同时倒着走",
-    "一只会说话的鸟带来口信", "下了一场带着光点的雪", "找到一张会动的旧照片", "听到墙里传出音乐声",
-    "影子突然比自己先动了一步", "挖到一颗会发光的石头", "雨停后城市变成了微缩模型", "月亮近得能看清环形山",
-    "电梯停在了不存在的楼层", "所有植物一夜之间开花了", "捡到一本写着自己名字的日记", "海雾中驶来一艘旧帆船",
-    "屋顶上落了一颗小星星", "冰箱里住着一个小小的冬天", "每天同一时间出现的陌生访客", "地图上多出一个没有名字的小镇",
+EVENTS = [
+    "泡好的茶刚好在雨停时端上桌", "修好的旧钟表重新走动起来", "窗外雪停，月光第一次照进屋里",
+    "老人把最后一枚糖递给小孩", "猫跳上膝头打起盹来", "刚出炉的面包香气引来邻居",
+    "孩子第一次把风筝放上了天", "远处的灯塔亮起来了", "候鸟群恰好从头顶飞过",
+    "风把一张旧车票吹到脚边", "旧收音机忽然放出一段熟悉的旋律", "一封没有署名的信被送到门口",
+    "墨水在纸上晕开成一个形状", "帽子被风吹走，落在一个陌生人头上", "鸽子叼走了三明治的一角",
+    "机器人把咖啡端反了方向", "影子突然比自己先动了一步", "月亮近得能看清环形山",
+    "雨停后城市变成了微缩模型", "所有钟表同时倒着走",
 ]
 MOODS = [
     "温暖治愈", "紧张刺激", "荒诞幽默", "宁静悠远", "神秘莫测",
@@ -71,7 +76,7 @@ class H3IdeaGeneratorLocal(io.ComfyNode):
             category="prompt",
             description="Generate a short video story draft (setup + shot-by-shot beats) with a local GGUF model, to feed the H3 Prompt Enhancer's prompt input when you're out of inspiration. Wire the same keyframes/reference images as the enhancer and the story is written around them: a plot that travels from first to last frame, or one starring the reference subject. Empty hint + no images = the seed picks story ingredients and the model weaves them, so every seed gives a different but reproducible story. The story is sized to the duration input and the draft is stamped with it, so the enhancer schedules shots within the runtime. Explicit requirements from the hint (style, shot policy, ...) are restated in the draft's opening line with their English production terms, so the enhancer keeps them. Image input needs a *mmproj*.gguf next to the model.",
             inputs=[
-                io.String.Input("hint", multiline=True, default="", tooltip="Optional theme/clue to riff on — no need to write the duration here, it has its own input. Leave empty for a random story draft from seed-picked ingredients (with images: only plot-twist and mood are drawn, subject/setting come from the pictures)."),
+                io.String.Input("hint", multiline=True, default="", tooltip="Optional theme/clue to riff on - no need to write the duration here, it has its own input. Leave empty for a random story draft from seed-picked ingredients (with images: only core event and mood are drawn, subject/setting come from the pictures)."),
                 io.Combo.Input("language", options=["中文", "English"], default="中文", tooltip="Language of the generated story; the enhancer accepts either."),
                 model_input(),
                 io.Combo.Input("thinking", options=["disabled", "enabled"], default="disabled", advanced=True),
@@ -128,14 +133,14 @@ class H3IdeaGeneratorLocal(io.ComfyNode):
             rng = random.Random(seed)
             if frames:
                 # subject/setting come from the pictures; the seed only picks what happens
-                ingredients = f"意外元素：{rng.choice(TWISTS)}；基调：{rng.choice(MOODS)}"
-                parts.append(f"随机元素：{ingredients}\n以画面中主体为主角，让「意外元素」在故事里真实发生并推动转折，基调决定整体氛围。不要复述画面内容。")
+                ingredients = f"核心事件：{rng.choice(EVENTS)}；基调：{rng.choice(MOODS)}"
+                parts.append(f"随机元素：{ingredients}\n以画面中主体为主角，让「核心事件」自然发生并成为故事的核心，不必刻意制造转折或惊喜。基调决定整体氛围。不要复述画面内容。开头行需列出基调，并附英文术语。")
             else:
                 ingredients = (
                     f"类型：{rng.choice(GENRES)}；主角：{rng.choice(SUBJECTS)}；场景：{rng.choice(SETTINGS)}；"
-                    f"意外元素：{rng.choice(TWISTS)}；基调：{rng.choice(MOODS)}"
+                    f"核心事件：{rng.choice(EVENTS)}；基调：{rng.choice(MOODS)}"
                 )
-                parts.append(f"随机元素：{ingredients}\n把这些元素编织成一个有转折的故事草稿，按分镜展开。")
+                parts.append(f"随机元素：{ingredients}\n把这些元素编织成一个具体的故事草稿，让「核心事件」自然发生并成为故事的主体，不必刻意制造转折或惊喜。按分镜展开。开头行需列出类型与基调，并附英文术语。")
             log(f"idea ingredients (seed={seed}): {ingredients}")
         user_text = "\n".join(parts)
 
