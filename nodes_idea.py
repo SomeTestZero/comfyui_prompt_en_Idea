@@ -11,12 +11,11 @@ from .nodes_local import advanced_model_inputs, build_model_config, derive_mode,
 IDEA_SYSTEM = """You are a screenwriter for short AI-generated videos. Write a story draft from the user's request.
 
 Rules:
-- The user's request defines the story: its subject, style, pacing, shot count, and any explicit requirements are mandatory - build everything around them. Whatever the user left open, invent freely and concretely (characters, actions, scene details).
-- The draft is the only thing the downstream prompt writer ever sees - the user's original words never reach it. Restate every explicit requirement from the request or the given ingredients (style/genre, shot policy such as a single continuous take with no cuts, pacing, mood, anything insisted on) in the opening line of the draft, in the user's own words plus the standard English production term in parentheses when one exists, e.g. "风格：动漫（2D-animated）；镜头：单镜头一镜到底（one continuous take, no cuts），只运镜". A requirement not written in the draft is lost.
-- Format: the opening line (explicit requirements if any, then the setup: subject / setting / tone), then the story as shot beats. Default to a shot-by-shot breakdown with framing, the key action, and any spoken lines in quotes - unless the user asked otherwise (e.g. a single long take). When the story is one continuous take, write it as one continuous narration with no shot numbering - natural paragraph breaks are fine, but numbered beats (镜头1、镜头2…) read as cuts to the downstream prompt writer.
-- Fit the {duration}-second runtime: everything in it — actions, shot changes, spoken lines — must be playable within {duration} seconds at a natural pace.{image_note}
-- Write in {language}.
-- Output ONLY the story draft. No title, no commentary, no markdown headers."""
+- The user's request is binding - subject, style, pacing, shot count, any explicit requirement. Everything left open is yours to invent, freely and concretely.
+- The draft is the only thing the downstream prompt writer ever sees. Open with one line that restates every explicit requirement in the user's words plus the standard English production term in parentheses, e.g. "风格：动漫（2D-animated）；镜头：单镜头一镜到底（one continuous take, no cuts）", then the setup: subject / setting / tone. A requirement not written in the draft is lost.
+- Then the story as filmable beats - framing, the key action, any spoken lines in quotes. Number beats only where a real cut happens; a single continuous take stays one unnumbered narration, because 镜头1、镜头2 numbering reads as cuts downstream.
+- Everything - actions, cuts, spoken lines - must be playable within {duration} seconds.{image_note}
+- Write in {language}. Output ONLY the story draft: no title, no commentary, no markdown."""
 
 MODE_GUIDANCE = {
     "Ref2VA": "The attached reference image(s) show the main character/subject. Keep their visible look consistent, but the place, event, and plot are yours to invent — go far beyond what the image shows.",
@@ -31,26 +30,32 @@ IDEA_MAX_TOKENS = -1
 
 # Random-mode ingredient pools. The seed picks the combination, the model only
 # weaves them - this keeps "random" actually random instead of collapsing onto
-# the model's few favorite tropes. EVENTS mixes quiet, everyday, humorous, and
-# a few surreal happenings: it guarantees the story has a core to hang on
-# without forcing a twist - an all-surprise pool plus a mandatory-turn
-# instruction made every draft jump-scare-shaped. With images connected,
-# subject/setting come from the pictures, so only EVENTS and MOODS are drawn.
+# the model's few favorite tropes. Variety must come from these inputs, never
+# from directives in the prompt: any instruction about story rhythm ("must
+# have a twist", "keep it calm") biases every draft toward one shape. EVENTS
+# mixes quiet, everyday, humorous, and a few surreal happenings so the story
+# always has a core to hang on. With images connected, subject/setting come
+# from the pictures, so only EVENTS and MOODS are drawn.
 GENRES = [
     "科幻", "奇幻", "日常治愈", "悬疑", "冒险", "轻喜剧", "自然纪录片", "历史古装", "赛博朋克", "童话",
     "都市传说", "太空歌剧", "末世废土", "武侠", "蒸汽朋克", "海洋探险", "微观世界", "怪谈", "美食纪录", "时间循环",
+    "水墨动画", "黏土定格动画", "复古胶片", "黑色侦探", "体育竞技", "歌舞音乐剧", "极地纪实", "市井烟火",
 ]
 SUBJECTS = [
     "一只流浪猫", "退休的灯塔看守人", "送外卖的机器人", "卖花的老奶奶", "失眠的天文台研究员",
     "会修表的小狐狸", "深夜食堂老板", "实习小巫师", "古董店掌柜", "地铁站务员",
     "山区邮递员", "海底观测站工程师", "木偶戏艺人", "图书管理员", "夜班出租车司机",
     "守林人", "马戏团小丑", "渔村少年", "AI 管家", "云朵牧羊人",
+    "外卖骑手", "退休消防员", "夜市烧烤摊主", "小学自然课老师", "考古队学徒",
+    "修船的老船匠", "第一次进城的小镇青年", "盲人调音师", "便利店夜班店员", "观光热气球驾驶员",
 ]
 SETTINGS = [
     "废弃的温室花房", "凌晨四点的夜市", "山顶缆车终点站", "老式火车卧铺车厢", "下雨的城中村天台",
     "极光下的冰原", "深海热泉旁", "沙漠中的绿洲小镇", "百年图书馆的禁书区", "漂浮的空中岛屿",
     "地下溶洞暗河", "台风来临前的海边", "雪夜的温泉旅馆", "满是藤蔓的旧游乐园", "空间站观景舱",
     "黄昏的麦田", "凌晨的机场候机厅", "梅雨季节的老巷", "火山脚下的村庄", "无边无际的盐沼",
+    "深夜自习室", "郊外废弃汽车影院", "老城区理发店", "山谷悬索桥", "清晨的渔港码头",
+    "屋顶菜园", "冬夜的火车站台", "巷尾的旧邮局",
 ]
 EVENTS = [
     "泡好的茶刚好在雨停时端上桌", "修好的旧钟表重新走动起来", "窗外雪停，月光第一次照进屋里",
@@ -60,10 +65,14 @@ EVENTS = [
     "墨水在纸上晕开成一个形状", "帽子被风吹走，落在一个陌生人头上", "鸽子叼走了三明治的一角",
     "机器人把咖啡端反了方向", "影子突然比自己先动了一步", "月亮近得能看清环形山",
     "雨停后城市变成了微缩模型", "所有钟表同时倒着走",
+    "停电的夜里全楼的人下楼看星星", "修了很久的灯串第一次全部亮起", "候车时身边的陌生人分来一只耳机",
+    "拖鞋被浪卷走又自己漂了回来", "鹦鹉学会了门铃声骗开了门", "旧地图上标着的小巷真的存在",
+    "雨后水洼里倒映出整条街",
 ]
 MOODS = [
     "温暖治愈", "紧张刺激", "荒诞幽默", "宁静悠远", "神秘莫测",
     "热血沸腾", "淡淡忧伤", "史诗恢宏", "诡谲奇异", "轻松欢快",
+    "怀旧", "好奇雀跃", "庄严肃穆", "孤独疏离",
 ]
 
 
@@ -128,19 +137,19 @@ class H3IdeaGeneratorLocal(io.ComfyNode):
             listing = ", ".join(f"<Picture {i + 1}> ({role})" for i, (_, role) in enumerate(frames))
             parts.append(f"{len(frames)} image(s) attached in order: {listing}.")
         if hint:
-            parts.append(f"用户要求：{hint}\n按上面的要求编一个故事草稿，把细节补充具体；要求里没说到的部分自由发挥。草稿开头行需原样列出上面的明确要求，并附对应的英文术语。")
+            parts.append(f"用户要求：{hint}\n按上面的要求编一个故事草稿。开头行原样列出明确要求，并附英文术语。")
         else:
             rng = random.Random(seed)
             if frames:
                 # subject/setting come from the pictures; the seed only picks what happens
                 ingredients = f"核心事件：{rng.choice(EVENTS)}；基调：{rng.choice(MOODS)}"
-                parts.append(f"随机元素：{ingredients}\n以画面中主体为主角，让「核心事件」自然发生并成为故事的核心，不必刻意制造转折或惊喜。基调决定整体氛围。不要复述画面内容。开头行需列出基调，并附英文术语。")
+                parts.append(f"随机元素：{ingredients}\n以画面中的主体为主角，让「核心事件」在故事里发生并成为核心；基调决定整体氛围，不要复述画面内容。开头行列出基调，并附英文术语。")
             else:
                 ingredients = (
                     f"类型：{rng.choice(GENRES)}；主角：{rng.choice(SUBJECTS)}；场景：{rng.choice(SETTINGS)}；"
                     f"核心事件：{rng.choice(EVENTS)}；基调：{rng.choice(MOODS)}"
                 )
-                parts.append(f"随机元素：{ingredients}\n把这些元素编织成一个具体的故事草稿，让「核心事件」自然发生并成为故事的主体，不必刻意制造转折或惊喜。按分镜展开。开头行需列出类型与基调，并附英文术语。")
+                parts.append(f"随机元素：{ingredients}\n用这些元素编一个故事草稿，让「核心事件」在故事里发生并成为核心。开头行列出类型与基调，并附英文术语。")
             log(f"idea ingredients (seed={seed}): {ingredients}")
         user_text = "\n".join(parts)
 
