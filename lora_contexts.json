@@ -1,0 +1,26 @@
+{
+ "Kera2\\姬紫月K2-jiziyue.safetensors": {
+  "context": "Female, young adult, with a smooth oval face, high cheekbones, and a straight nose; large almond-shaped purple eyes with subtle shading, thin arched eyebrows, and soft pink lips; long, dark black hair styled in a half-updo with loose strands framing the face, adorned with small golden hairpins and dangling ornaments; wearing a purple off-shoulder garment with thin straps and a delicate gold necklace featuring spherical pendants.",
+  "probe_type": "character",
+  "trigger": "姬紫月",
+  "updated": "2026-08-10T14:33:00"
+ },
+ "Kera2\\慕沛灵K2-mupeilin.safetensors": {
+  "context": "The LoRA consistently produces a young East Asian female with a smooth, oval face and soft jawline, large almond-shaped eyes with a distinct purple-blue iris and prominent double eyelids, a small straight nose, and full glossy lips with a natural pink tint; her dark black hair is styled in a loose, slightly tousled updo with wispy strands framing the face, and she appears bare-shouldered with no visible clothing or accessories, emphasizing her delicate collarbones and smooth skin texture.",
+  "probe_type": "character",
+  "trigger": "慕沛灵",
+  "updated": "2026-08-10T13:49:30"
+ },
+ "Kera2\\陆雪琪K2-luxueqi.safetensors": {
+  "context": "The character is a young woman with fair skin, a slender oval face, and large, dark brown eyes with defined eyeliner and subtle shimmer. Her long, straight black hair is styled in an elegant updo with loose strands framing her face, adorned with ornate silver and blue feather-like hairpins and dangling pearl earrings. She wears a light blue and white traditional-style garment with intricate silver embroidery, featuring a high collar with a prominent blue gemstone brooch and delicate pearl accents along the shoulders. A small, luminous white mark is centered on her forehead, and her lips are softly tinted coral.",
+  "probe_type": "character",
+  "trigger": "陆雪琪",
+  "updated": "2026-08-10T14:35:12"
+ },
+ "Kera2\\宋玉K2-songyu.safetensors": {
+  "context": "The LoRA consistently produces a young East Asian woman with a smooth, oval face, large dark eyes with subtle winged eyeliner, and full lips tinted in a warm terracotta shade. Her long, dark brown hair is styled in a loose, slightly tousled half-updo with wispy strands framing her face and cascading over her shoulders. She has fair, luminous skin with a soft matte finish and delicate facial features including a straight nose and defined but not sharp cheekbones. No clothing or accessories are visible in the probe image, suggesting the LoRA focuses primarily on facial identity and hair styling rather than attire or props.",
+  "probe_type": "character",
+  "trigger": "宋玉",
+  "updated": "2026-08-10T14:56:49"
+ }
+}
