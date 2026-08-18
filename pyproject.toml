@@ -1,0 +1,16 @@
+[project]
+name = "h3-prompt-enhancer"
+description = "Rewrite rough ideas into structured MiniMax H3 video prompts with a local multimodal GGUF model (llama.cpp) or the DeepSeek API."
+version = "0.1.0"
+dependencies = ["numpy", "requests", "pillow"]
+
+# Local GGUF backend: pip install .[localgguf] -- on Windows prefer a prebuilt
+# llama-cpp-python wheel; a source build needs MSVC and takes forever.
+[project.optional-dependencies]
+localgguf = ["llama-cpp-python"]
+
+[project.urls]
+Repository = "https://github.com/SomeTestZero/comfyui_prompt_en_Idea"
+
+[tool.comfy]
+DisplayName = "H3 Prompt Enhancer"
