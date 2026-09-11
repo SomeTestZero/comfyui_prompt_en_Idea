@@ -208,13 +208,23 @@ def call_chat_completions(cfg, key, model, system, user_text, temperature, on_te
             if response.status_code != 200:
                 raise RuntimeError(f"chat completions API error {response.status_code}: {response.text[:500]}")
             chunks, last_push = [], 0.0
-            for line in response.iter_lines(decode_unicode=True):
-                if not line or not line.startswith("data:"):
+            # iter_lines(decode_unicode=False) + manual utf-8 decode: str.splitlines
+            # would also split on U+2028/U+2029, which JSON strings may contain
+            # unescaped - thinking-heavy models (GLM) do emit them and would
+            # break json.loads mid-line.
+            for raw in response.iter_lines(decode_unicode=False):
+                if not raw:
+                    continue
+                line = raw.decode("utf-8", errors="replace").strip()
+                if not line.startswith("data:"):
                     continue
                 data = line[5:].strip()
                 if data == "[DONE]":
                     break
-                delta = json.loads(data).get("choices", [{}])[0].get("delta", {})
+                try:
+                    delta = json.loads(data).get("choices", [{}])[0].get("delta", {})
+                except json.JSONDecodeError as e:
+                    raise RuntimeError(f"bad SSE data line: {data[:200]!r}") from e
                 piece = delta.get("content")  # reasoning_content is intentionally dropped
                 if piece:
                     chunks.append(piece)

@@ -167,13 +167,23 @@ def test_chat_payload():
 
     class FakeResponse:
         status_code = 200
-        def iter_lines(self, decode_unicode=True):
-            yield 'data: {"choices": [{"delta": {"content": "ok"}}]}'
-            yield "data: [DONE]"
+        def __init__(self, lines=None):
+            self.lines = lines or [
+                b'data: {"choices": [{"delta": {"content": "ok"}}]}',
+                b"data: [DONE]",
+            ]
+        def iter_lines(self, decode_unicode=False):
+            assert decode_unicode is False  # str.splitlines would break on U+2028
+            return iter(self.lines)
 
     def fake_post(url, headers=None, json=None, timeout=None, stream=True):
         captured["url"] = url
         captured["payload"] = json
+        # SSE line containing a raw U+2028 (unescaped in JSON, emitted by
+        # thinking-heavy models): must survive line splitting intact
+        if json.get("seed") == 2028:
+            tricky = b'data: {"choices": [{"delta": {"content": "a\xe2\x80\xa8b"}}]}'
+            return FakeResponse([tricky, b"data: [DONE]"])
         return FakeResponse()
 
     import h3_prompt_enhancer.common as common
@@ -217,6 +227,10 @@ def test_chat_payload():
         p = captured["payload"]
         assert p["max_tokens"] == 8192 and p["thinking"] == {"type": "enabled"} and p["temperature"] == 0.7
         assert content == "ok"
+        # U+2028 inside a streamed delta survives line splitting
+        content = call_chat_completions({"base_url": "https://x"}, "k", "glm-5.3-flash",
+                                        "sys", "u", 0.7, seed=2028)
+        assert content == "a\u2028b", repr(content)
     finally:
         common.requests.post = old_post
     print("chat_payload OK")
