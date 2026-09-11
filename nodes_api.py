@@ -141,7 +141,7 @@ class DeepSeekPromptOptimizer(io.ComfyNode):
             cfg = load_config()
             key = clean_api_key(api_key) or cfg["api_key"].strip()
             if not key:
-                raise ValueError(f"DeepSeek API key is empty. Set it in config.json or in the node's api_key input.")
+                raise ValueError("DeepSeek API key is empty. Set it in config.json or in the node's api_key input.")
 
             if not prompt.strip():
                 raise ValueError("prompt is empty.")
@@ -225,7 +225,7 @@ class DeepSeekTranslator(io.ComfyNode):
             cfg = load_config()
             key = clean_api_key(api_key) or cfg["api_key"].strip()
             if not key:
-                raise ValueError(f"DeepSeek API key is empty. Set it in config.json or in the node's api_key input.")
+                raise ValueError("DeepSeek API key is empty. Set it in config.json or in the node's api_key input.")
             system = TRANSLATE_SYSTEM.format(target=target_lang)
             log(f"translate target={target_lang} model={model}")
             log(f"input text: {text.strip()[:500]}")

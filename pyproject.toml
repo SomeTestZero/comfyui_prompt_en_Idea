@@ -1,6 +1,6 @@
 [project]
 name = "h3-prompt-enhancer"
-description = "Rewrite rough ideas into structured MiniMax H3 video prompts with a local multimodal GGUF model (llama.cpp) or the DeepSeek API."
+description = "Rewrite rough ideas into structured MiniMax H3 video prompts with a local multimodal GGUF model (llama.cpp) or OpenAI-compatible cloud APIs (Volcengine Ark, DeepSeek)."
 version = "0.1.0"
 dependencies = ["numpy", "requests", "pillow"]
 

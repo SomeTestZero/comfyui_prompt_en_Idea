@@ -1,4 +1,15 @@
 {
   "api_key": "sk-your-deepseek-api-key-here",
-  "base_url": "https://api.deepseek.com"
+  "base_url": "https://api.deepseek.com",
+  "cloud": {
+    "volcengine": {
+      "api_key": "your-ark-api-key-here"
+    },
+    "volcengine-plan": {
+      "api_key": "your-agent-plan-key-here"
+    },
+    "volcengine-coding": {
+      "api_key": "your-coding-plan-key-here"
+    }
+  }
 }

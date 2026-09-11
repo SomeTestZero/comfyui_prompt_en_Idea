@@ -177,17 +177,24 @@ def make_progress_cb(unique_id):
     return cb
 
 
-def call_chat_completions(cfg, key, model, system, user_text, temperature, on_text=None, thinking=False):
+def call_chat_completions(cfg, key, model, system, user_text, temperature, on_text=None, thinking=False,
+                          *, seed=None, max_tokens=8192, control_thinking=True, reasoning_effort=None):
+    """user_text may be a string or an OpenAI-style content block list (multimodal)."""
     payload = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user_text},
         ],
-        "max_tokens": 8192,
+        "max_tokens": max_tokens,
         "stream": True,
-        "thinking": {"type": "enabled" if thinking else "disabled"},
     }
+    if control_thinking:
+        payload["thinking"] = {"type": "enabled" if thinking else "disabled"}
+    if reasoning_effort:
+        payload["reasoning_effort"] = reasoning_effort
+    if seed is not None:
+        payload["seed"] = seed
     # thinking mode ignores temperature; v3-era reasoner models reject it
     if "reasoner" not in model:
         payload["temperature"] = temperature
@@ -199,7 +206,7 @@ def call_chat_completions(cfg, key, model, system, user_text, temperature, on_te
         try:
             response = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT, stream=True)
             if response.status_code != 200:
-                raise RuntimeError(f"DeepSeek API error {response.status_code}: {response.text[:500]}")
+                raise RuntimeError(f"chat completions API error {response.status_code}: {response.text[:500]}")
             chunks, last_push = [], 0.0
             for line in response.iter_lines(decode_unicode=True):
                 if not line or not line.startswith("data:"):

@@ -88,6 +88,56 @@ def build_model_config(model, thinking, n_ctx, n_gpu_layers, n_cpu_moe, reasonin
     }
 
 
+def collect_frames(mode, first_frame, last_frame, reference_images):
+    """(tensor, role) pairs in <Picture N> order; T2VA returns an empty list."""
+    frames = []
+    if mode == "Ref2VA":
+        if reference_images:
+            for name in sorted(reference_images, key=lambda n: int(n.rsplit("_", 1)[-1])):
+                for frame in reference_images[name]:
+                    frames.append((frame, "reference"))
+        if first_frame is not None:
+            frames.append((first_frame[0], "first-frame anchor"))
+        if last_frame is not None:
+            frames.append((last_frame[0], "last-frame anchor"))
+        if not frames:
+            raise ValueError("Ref2VA needs at least one reference image or keyframe connected.")
+    elif mode == "I2VA":
+        if first_frame is None:
+            raise ValueError("I2VA needs first_frame connected.")
+        frames = [(first_frame[0], "first frame")]
+    elif mode == "FL2VA":
+        if first_frame is None or last_frame is None:
+            raise ValueError("FL2VA needs both first_frame and last_frame connected.")
+        frames = [(first_frame[0], "first frame"), (last_frame[0], "last frame")]
+    elif mode == "L2VA":
+        if last_frame is None:
+            raise ValueError("L2VA needs last_frame connected.")
+        frames = [(last_frame[0], "last frame")]
+    return frames
+
+def build_enhance_user_text(prompt, frames):
+    """(user_text, image_note) pair for the enhancer system template; with no
+    text request the intent is reverse-inferred from the attached pictures."""
+    user_text = prompt.strip()
+    if frames:
+        listing = ", ".join(f"<Picture {i + 1}> ({role})" for i, (_, role) in enumerate(frames))
+        image_note = (
+            f"\n- The user attached {len(frames)} image(s), given in the user message in order: {listing}. "
+            "Describe only what is actually visible in them; never invent appearance details."
+        )
+        if user_text:
+            user_text += f"\n\n{len(frames)} image(s) attached in order: {listing}."
+        else:
+            user_text = (
+                f"No text request was provided. Reverse-infer the intent from the {len(frames)} attached image(s), "
+                f"given in order: {listing}. Describe what is actually visible in them and write the final "
+                "generation prompt from the images alone, following the skill's structure."
+            )
+        return user_text, image_note
+    return user_text, ""
+
+
 class H3PromptEnhancerLocal(io.ComfyNode):
     @classmethod
     def define_schema(cls):
@@ -144,31 +194,7 @@ class H3PromptEnhancerLocal(io.ComfyNode):
 
         mode = derive_mode(first_frame, last_frame, reference_images) if task_type == "Auto" else task_type
 
-        # (tensor, role) pairs in <Picture N> order
-        frames = []
-        if mode == "Ref2VA":
-            if reference_images:
-                for name in sorted(reference_images, key=lambda n: int(n.rsplit("_", 1)[-1])):
-                    for frame in reference_images[name]:
-                        frames.append((frame, "reference"))
-            if first_frame is not None:
-                frames.append((first_frame[0], "first-frame anchor"))
-            if last_frame is not None:
-                frames.append((last_frame[0], "last-frame anchor"))
-            if not frames:
-                raise ValueError("Ref2VA needs at least one reference image or keyframe connected.")
-        elif mode == "I2VA":
-            if first_frame is None:
-                raise ValueError("I2VA needs first_frame connected.")
-            frames = [(first_frame[0], "first frame")]
-        elif mode == "FL2VA":
-            if first_frame is None or last_frame is None:
-                raise ValueError("FL2VA needs both first_frame and last_frame connected.")
-            frames = [(first_frame[0], "first frame"), (last_frame[0], "last frame")]
-        elif mode == "L2VA":
-            if last_frame is None:
-                raise ValueError("L2VA needs last_frame connected.")
-            frames = [(last_frame[0], "last frame")]
+        frames = collect_frames(mode, first_frame, last_frame, reference_images)
 
         if not prompt.strip() and not frames:
             raise ValueError("prompt is empty and no reference images connected.")
@@ -185,22 +211,7 @@ class H3PromptEnhancerLocal(io.ComfyNode):
             on_text = make_progress_cb(cls.hidden.unique_id)
             log(f"mode: {mode} (task_type={task_type})")
 
-            image_note = ""
-            user_text = prompt.strip()
-            if frames:
-                listing = ", ".join(f"<Picture {i + 1}> ({role})" for i, (_, role) in enumerate(frames))
-                image_note = (
-                    f"\n- The user attached {len(frames)} image(s), given in the user message in order: {listing}. "
-                    "Describe only what is actually visible in them; never invent appearance details."
-                )
-                if user_text:
-                    user_text += f"\n\n{len(frames)} image(s) attached in order: {listing}."
-                else:
-                    user_text = (
-                        f"No text request was provided. Reverse-infer the intent from the {len(frames)} attached image(s), "
-                        f"given in order: {listing}. Describe what is actually visible in them and write the final "
-                        "generation prompt from the images alone, following the skill's structure."
-                    )
+            user_text, image_note = build_enhance_user_text(prompt, frames)
 
             system = SYSTEM_TEMPLATE.format(
                 mode=mode,

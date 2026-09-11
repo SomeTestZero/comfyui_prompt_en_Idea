@@ -184,6 +184,66 @@ def draw_ingredients(rng):
     return genre, subject, rng.choice(setting_pool), rng.choice(event_pool), rng.choice(MOODS)
 
 
+def build_idea_instruction(hint, frames, seed):
+    """User text for one draft: seed-drawn ingredients plus the binding-hint
+    instruction. The same (hint, frames, seed) always yields the same text; with
+    images connected, subject/setting come from the pictures and the seed only
+    draws event and mood."""
+    hint = hint.strip()
+    rng = random.Random(seed)
+    parts = []
+    if frames:
+        listing = ", ".join(f"<Picture {i + 1}> ({role})" for i, (_, role) in enumerate(frames))
+        parts.append(f"{len(frames)} image(s) attached in order: {listing}.")
+        # subject/setting come from the pictures; the seed only picks what happens
+        ingredients = f"核心事件：{rng.choice(EVENTS)}；基调：{rng.choice(MOODS)}"
+    else:
+        genre, subject, setting, event, mood = draw_ingredients(rng)
+        ingredients = f"类型：{genre}；主角：{subject}；场景：{setting}；核心事件：{event}；基调：{mood}"
+    log(f"idea ingredients (seed={seed}): {ingredients}")
+    # A hint outranks the drawn ingredients: it is the binding request, they
+    # only fill the slots it leaves open, and any that clash with it are
+    # dropped outright - so "3DCG" gets a different subject/setting/event
+    # every seed, while a detailed hint behaves as if alone.
+    if hint and frames:
+        parts.append(f"用户要求：{hint}\n随机元素：{ingredients}\n以用户要求为最高优先级、以画面中的主体为主角编一个故事草稿：要求中的每一项都必须满足；随机元素只用于补足要求没有提到的方面，与要求或画面冲突的直接弃用，没被弃用的「核心事件」必须真正发生并成为核心；基调决定整体氛围，不要复述画面内容。开头行原样列出用户的明确要求，并附英文术语。")
+    elif hint:
+        parts.append(f"用户要求：{hint}\n随机元素：{ingredients}\n以用户要求为最高优先级编一个故事草稿：要求中的每一项都必须满足；随机元素只用于补足要求没有提到的方面（主角、场景、事件、基调都可从中取材），与要求冲突或重复的直接弃用，其余照常融入故事，并让「核心事件」真正发生、成为核心。开头行原样列出用户的明确要求，并附英文术语。")
+    elif frames:
+        parts.append(f"随机元素：{ingredients}\n以画面中的主体为主角，让「核心事件」在故事里发生并成为核心（表面细节可按画面情境改编，但事件本身必须真正发生）；基调决定整体氛围，不要复述画面内容。开头行列出基调，并附英文术语。")
+    else:
+        parts.append(f"随机元素：{ingredients}\n用这些元素编一个故事草稿，让「核心事件」在故事里发生并成为核心。五个元素本身不可替换；若表面细节相互冲突（如场景没有车站，而事件写着「候车」），改编细节使其自洽（候车改为等船），保留元素的核心。开头行列出类型与基调，并附英文术语。")
+    return "\n".join(parts)
+
+def collect_idea_frames(first_frame, last_frame, reference_images):
+    """(tensor, role) pairs in <Picture N> order, same convention as the enhancer."""
+    # (tensor, role) pairs in <Picture N> order, same convention as the enhancer
+    frames = []
+    if reference_images:
+        for name in sorted(reference_images, key=lambda n: int(n.rsplit("_", 1)[-1])):
+            for frame in reference_images[name]:
+                frames.append((frame, "reference"))
+    if first_frame is not None:
+        frames.append((first_frame[0], "first frame"))
+    if last_frame is not None:
+        frames.append((last_frame[0], "last frame"))
+    return frames
+
+def build_segment_note(segment_seconds, total_segments, beat_durations):
+    """Per-segment beat-sheet appendix for the idea system prompt, or '' for single-clip drafts."""
+    beat_durations = beat_durations.strip()
+    if total_segments > 1 and (segment_seconds > 0 or beat_durations):
+        if beat_durations:
+            pacing = (f"The beats advance the story by {beat_durations} seconds respectively "
+                      "(every segment after the first re-shows the previous segment's tail as pinned context, "
+                      "so its new story time is shorter than the clip length; a very short last beat is a brief "
+                      "closing gesture, not a full action).")
+        else:
+            pacing = f"Each segment runs about {segment_seconds:g}s."
+        return SEGMENT_NOTE.format(total_segments=total_segments, pacing=pacing)
+    return ""
+
+
 class H3IdeaGeneratorLocal(io.ComfyNode):
     @classmethod
     def define_schema(cls):
@@ -235,57 +295,11 @@ class H3IdeaGeneratorLocal(io.ComfyNode):
         mode = derive_mode(first_frame, last_frame, reference_images)
         dur = f"{duration:g}"
 
-        # (tensor, role) pairs in <Picture N> order, same convention as the enhancer
-        frames = []
-        if reference_images:
-            for name in sorted(reference_images, key=lambda n: int(n.rsplit("_", 1)[-1])):
-                for frame in reference_images[name]:
-                    frames.append((frame, "reference"))
-        if first_frame is not None:
-            frames.append((first_frame[0], "first frame"))
-        if last_frame is not None:
-            frames.append((last_frame[0], "last frame"))
+        frames = collect_idea_frames(first_frame, last_frame, reference_images)
+        user_text = build_idea_instruction(hint, frames, seed)
 
-        hint = hint.strip()
-        rng = random.Random(seed)
-        parts = []
-        if frames:
-            listing = ", ".join(f"<Picture {i + 1}> ({role})" for i, (_, role) in enumerate(frames))
-            parts.append(f"{len(frames)} image(s) attached in order: {listing}.")
-            # subject/setting come from the pictures; the seed only picks what happens
-            ingredients = f"核心事件：{rng.choice(EVENTS)}；基调：{rng.choice(MOODS)}"
-        else:
-            genre, subject, setting, event, mood = draw_ingredients(rng)
-            ingredients = f"类型：{genre}；主角：{subject}；场景：{setting}；核心事件：{event}；基调：{mood}"
-        log(f"idea ingredients (seed={seed}): {ingredients}")
-        # A hint outranks the drawn ingredients: it is the binding request, they
-        # only fill the slots it leaves open, and any that clash with it are
-        # dropped outright - so "3DCG" gets a different subject/setting/event
-        # every seed, while a detailed hint behaves as if alone.
-        if hint and frames:
-            parts.append(f"用户要求：{hint}\n随机元素：{ingredients}\n以用户要求为最高优先级、以画面中的主体为主角编一个故事草稿：要求中的每一项都必须满足；随机元素只用于补足要求没有提到的方面，与要求或画面冲突的直接弃用，没被弃用的「核心事件」必须真正发生并成为核心；基调决定整体氛围，不要复述画面内容。开头行原样列出用户的明确要求，并附英文术语。")
-        elif hint:
-            parts.append(f"用户要求：{hint}\n随机元素：{ingredients}\n以用户要求为最高优先级编一个故事草稿：要求中的每一项都必须满足；随机元素只用于补足要求没有提到的方面（主角、场景、事件、基调都可从中取材），与要求冲突或重复的直接弃用，其余照常融入故事，并让「核心事件」真正发生、成为核心。开头行原样列出用户的明确要求，并附英文术语。")
-        elif frames:
-            parts.append(f"随机元素：{ingredients}\n以画面中的主体为主角，让「核心事件」在故事里发生并成为核心（表面细节可按画面情境改编，但事件本身必须真正发生）；基调决定整体氛围，不要复述画面内容。开头行列出基调，并附英文术语。")
-        else:
-            parts.append(f"随机元素：{ingredients}\n用这些元素编一个故事草稿，让「核心事件」在故事里发生并成为核心。五个元素本身不可替换；若表面细节相互冲突（如场景没有车站，而事件写着「候车」），改编细节使其自洽（候车改为等船），保留元素的核心。开头行列出类型与基调，并附英文术语。")
-        user_text = "\n".join(parts)
-
-        image_note = ""
-        if frames:
-            image_note = f"\n- {MODE_GUIDANCE[mode]}"
-        segment_note = ""
-        beat_durations = beat_durations.strip()
-        if total_segments > 1 and (segment_seconds > 0 or beat_durations):
-            if beat_durations:
-                pacing = (f"The beats advance the story by {beat_durations} seconds respectively "
-                          "(every segment after the first re-shows the previous segment's tail as pinned context, "
-                          "so its new story time is shorter than the clip length; a very short last beat is a brief "
-                          "closing gesture, not a full action).")
-            else:
-                pacing = f"Each segment runs about {segment_seconds:g}s."
-            segment_note = SEGMENT_NOTE.format(total_segments=total_segments, pacing=pacing)
+        image_note = f"\n- {MODE_GUIDANCE[mode]}" if frames else ""
+        segment_note = build_segment_note(segment_seconds, total_segments, beat_durations)
 
         config = build_model_config(model, thinking, n_ctx, n_gpu_layers, n_cpu_moe, reasoning_effort)
         sampling = LocalLLM.resolve_sampling(thinking == "enabled", temperature, top_p, top_k, presence_penalty)
