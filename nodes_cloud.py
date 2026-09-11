@@ -99,7 +99,7 @@ MODELS = {
     ],
 }
 
-DEFAULT_MODEL = "volcengine/doubao-seed-2-1-pro-260628"
+DEFAULT_MODEL = "volcengine-plan/glm-5.3-flash"
 
 IDEA_MAX_TOKENS = 16384
 ENHANCE_MAX_TOKENS = 16384

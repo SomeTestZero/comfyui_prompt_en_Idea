@@ -59,7 +59,8 @@ def test_parse_and_options():
     except ValueError:
         pass
     options = cloud_model_options()
-    assert DEFAULT_MODEL in options and DEFAULT_MODEL == "volcengine/doubao-seed-2-1-pro-260628"
+    assert DEFAULT_MODEL in options and DEFAULT_MODEL == "volcengine-plan/glm-5.3-flash"
+    assert "volcengine/doubao-seed-2-1-pro-260628" in options
     assert "volcengine-plan/glm-5.3-flash" in options
     assert "deepseek/deepseek-v4-flash-vision-exp" in options
     # config-added models and providers appear in the options
