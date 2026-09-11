@@ -2,7 +2,7 @@ from comfy_api.latest import ComfyExtension, io
 
 from .llm_local import apply_unload_hook
 from .nodes_api import DeepSeekPromptOptimizer, DeepSeekTranslator
-from .nodes_idea import H3IdeaGeneratorLocal
+from .nodes_idea import H3IdeaGeneratorLocal, H3SegmentBeatPicker
 from .nodes_local import H3LLMUnload, H3PromptEnhancerLocal, H3TranslatorLocal
 from .nodes_interrogate import UniversalImageInterrogatorLocal
 from .nodes_profiler import LoraProfilerLocal
@@ -18,6 +18,7 @@ class H3PromptEnhancerExtension(ComfyExtension):
         return [
             H3PromptEnhancerLocal,
             H3IdeaGeneratorLocal,
+            H3SegmentBeatPicker,
             H3TranslatorLocal,
             H3LLMUnload,
             UniversalPromptEnhancerLocal,
