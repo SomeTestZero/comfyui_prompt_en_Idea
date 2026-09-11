@@ -60,7 +60,7 @@ DeepSeek API key 写在 `config.json`（见 `config.example.json`）或节点的
 | provider | 端点 | 内置模型 | API key 环境变量 |
 | --- | --- | --- | --- |
 | `volcengine` | 方舟按量端点 `/api/v3` | doubao-seed-2-1-pro/turbo-260628、doubao-seed-evolving、doubao-seed-2-0-pro-260215（均支持图片） | `VOLCENGINE_API_KEY` |
-| `volcengine-plan` | Agent Plan 套餐 `/api/plan/v3` | glm-5.3-flash（支持图片）、glm-5.3 | `VOLCENGINE_AGENT_PLAN_API_KEY` |
+| `volcengine-plan` | Agent Plan 套餐 `/api/plan/v3` | 2026-09-13 实测：vision 可用 = glm-5.3-flash、doubao-seed-2-1-turbo / 2.0-pro / 2.0-lite、doubao-seed-evolving、kimi-k3 / k2.7-code；纯文本 = glm-5.3 / 5.2 / 5.3v；**deepseek-v4 全系与 minimax-m3 会静默忽略图片，已标为不可接图** | `VOLCENGINE_AGENT_PLAN_API_KEY` |
 | `volcengine-coding` | Coding Plan 套餐 `/api/coding/v3` | glm-5.3-flash（支持图片）、glm-5.3 | `VOLCENGINE_CODING_PLAN_API_KEY` |
 | `deepseek` | DeepSeek API | deepseek-v4-flash-vision-exp（支持图片）、deepseek-v4-flash、deepseek-v4-pro | `DEEPSEEK_API_KEY` |
 

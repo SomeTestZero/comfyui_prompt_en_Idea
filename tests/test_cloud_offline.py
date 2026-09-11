@@ -130,6 +130,11 @@ def test_model_info_and_vision():
     assert info["vision"] is True and info["thinking"] == "controlled" and info["effort"]["low"] == "low"
     info = model_info("volcengine-plan", "glm-5.3-flash")
     assert info["vision"] is True and info["thinking"] == "forced" and info["effort"]["medium"] == "high"
+    # plan-endpoint entries verified against a real key: doubao vision on, deepseek vision off
+    assert model_info("volcengine-plan", "doubao-seed-2-1-turbo-260628")["vision"] is True
+    assert model_info("volcengine-plan", "kimi-k3")["vision"] is True
+    assert model_info("volcengine-plan", "deepseek-v4-flash-vision-exp")["vision"] is False
+    assert model_info("volcengine-plan", "minimax-m3")["vision"] is False
     info = model_info("deepseek", "deepseek-v4-flash-vision-exp")
     assert info["vision"] is True and "effort" not in info
     assert model_info("volcengine", "unknown-model") is None

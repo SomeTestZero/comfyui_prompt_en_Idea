@@ -61,7 +61,9 @@ PROVIDERS = {
 #   vision: accepts image_url content blocks; unknown models (added via
 #           config.json) run unprofiled - images allowed, no effort mapping.
 #   thinking: "controlled" honors the thinking input (thinking.type parameter),
-#             "forced" always thinks server-side and ignores it (GLM).
+#             "forced" always thinks server-side and ignores it (GLM); also
+#             used for models whose switch is unverified - the field is then
+#             simply not sent (Kimi/MiniMax on the plan endpoint).
 #   effort: maps the reasoning_effort input to the API value; missing key or
 #           absent field = parameter not sent (auto = server default).
 MODELS = {
@@ -78,12 +80,34 @@ MODELS = {
          "effort": {"low": "low", "medium": "medium", "high": "high"}},
     ],
     "volcengine-plan": [
-        # GLM-5.3 family on the Agent Plan endpoint (verified via pi-volcengine-plans):
-        # thinking permanently on, effort only low/high/max, server default max.
+        # Agent Plan endpoint, verified against a real plan key on 2026-09-13:
+        # a color-tracking test (red/green image, answer must follow) separates
+        # true vision models from ones that silently ignore image blocks.
         {"id": "glm-5.3-flash", "vision": True, "thinking": "forced",
          "effort": {"low": "low", "medium": "high", "high": "max"}},
+        {"id": "doubao-seed-2-1-turbo-260628", "vision": True, "thinking": "controlled",
+         "effort": {"low": "low", "medium": "medium", "high": "high"}},
+        {"id": "doubao-seed-evolving", "vision": True, "thinking": "controlled",
+         "effort": {"low": "low", "medium": "medium", "high": "high"}},
+        {"id": "doubao-seed-2.0-pro", "vision": True, "thinking": "controlled",
+         "effort": {"low": "low", "medium": "medium", "high": "high"}},
+        {"id": "doubao-seed-2-0-pro-260215", "vision": True, "thinking": "controlled",
+         "effort": {"low": "low", "medium": "medium", "high": "high"}},
+        {"id": "doubao-seed-2.0-lite", "vision": True, "thinking": "controlled",
+         "effort": {"low": "low", "medium": "medium", "high": "high"}},
+        {"id": "kimi-k3", "vision": True, "thinking": "forced"},
+        {"id": "kimi-k2.7-code", "vision": True, "thinking": "forced"},
+        # text-only: image blocks are rejected with a clear 400 by the GLM trio
         {"id": "glm-5.3", "vision": False, "thinking": "forced",
          "effort": {"low": "low", "medium": "high", "high": "max"}},
+        {"id": "glm-5.2", "vision": False, "thinking": "forced"},
+        {"id": "glm-5.3v", "vision": False, "thinking": "forced"},
+        # silently ignore image blocks (answer without looking) - marked
+        # vision=False so the nodes reject image input up front
+        {"id": "deepseek-v4-flash", "vision": False, "thinking": "controlled"},
+        {"id": "deepseek-v4-pro", "vision": False, "thinking": "controlled"},
+        {"id": "deepseek-v4-flash-vision-exp", "vision": False, "thinking": "controlled"},
+        {"id": "minimax-m3", "vision": False, "thinking": "forced"},
     ],
     "volcengine-coding": [
         {"id": "glm-5.3-flash", "vision": True, "thinking": "forced",
