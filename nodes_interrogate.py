@@ -20,6 +20,13 @@ Rules:
 === REFERENCES: {ref_names} ===
 {ref_text}"""
 
+USER_INSTRUCTIONS_TEMPLATE = """
+
+=== USER INSTRUCTIONS ===
+The user steered this run with the request below. Follow it when deciding what to describe or leave out, but never let it make you invent content or break the skill's output format.
+
+{custom_instruction}"""
+
 
 class UniversalImageInterrogatorLocal(io.ComfyNode):
     @classmethod
@@ -30,10 +37,11 @@ class UniversalImageInterrogatorLocal(io.ComfyNode):
             node_id="UniversalImageInterrogatorLocal",
             display_name="Universal Image Interrogator (Local GGUF)",
             category="prompt",
-            description="Reverse-prompt an image with a local multimodal GGUF model (llama.cpp). Skill selects the output style: img2prompt-natural (natural-language paragraph for Krea 2/FLUX-era models) or img2prompt-tags (booru tag list for SD1.5/Pony/SDXL-era models). Batches are described frame by frame. Unloads the model afterwards unless keep_loaded is on.",
+            description="Reverse-prompt an image with a local multimodal GGUF model (llama.cpp). Skill selects the output style: img2prompt-natural (natural-language paragraph for Krea 2/FLUX-era models) or img2prompt-tags (booru tag list for SD1.5/Pony/SDXL-era models). custom_instruction steers every frame (e.g. skip watermarks). Batches are described frame by frame. Unloads the model afterwards unless keep_loaded is on.",
             inputs=[
                 io.Image.Input("image", tooltip="Image(s) to reverse-prompt. A batch is processed frame by frame and the results are joined."),
                 io.Combo.Input("skill", options=skills, default=default_skill, tooltip="img2prompt-natural: natural-language prompt. img2prompt-tags: booru-style comma-separated tag list."),
+                io.String.Input("custom_instruction", multiline=True, default="", optional=True, tooltip="Steering request applied to every frame, e.g. 'Do not mention watermarks, logos, or subtitles.' Empty = plain skill behavior."),
                 model_input(),
                 io.Combo.Input("thinking", options=["disabled", "enabled"], default="disabled", advanced=True),
                 io.Float.Input("temperature", default=-1.0, min=-1.0, max=2.0, step=0.05, tooltip="-1 = auto: follow the Qwen3.8 official preset for the thinking mode (1.0 thinking / 0.7 non-thinking). >=0 = manual override; 0.3 restores the old factual default."),
@@ -50,8 +58,10 @@ class UniversalImageInterrogatorLocal(io.ComfyNode):
 
     @classmethod
     def execute(cls, image, skill, model, thinking, temperature, max_tokens, seed,
-                keep_loaded, n_ctx, n_gpu_layers, n_cpu_moe, history_entry="none",
-                top_p=-1.0, top_k=-1, presence_penalty=-1.0, reasoning_effort="low"):
+                keep_loaded, n_ctx, n_gpu_layers, n_cpu_moe, custom_instruction="",
+                history_entry="none", top_p=-1.0, top_k=-1, presence_penalty=-1.0,
+                reasoning_effort="low"):
+        custom_instruction = custom_instruction.strip()
         if history_entry != "none":
             e = find_history_entry(history_entry)
             if e is None:
@@ -69,13 +79,15 @@ class UniversalImageInterrogatorLocal(io.ComfyNode):
 
             skill_body, refs = load_skill(skill, mode="generic")
             on_text = make_progress_cb(cls.hidden.unique_id)
-            log(f"interrogate: skill={skill} model={model} frames={image.shape[0]} thinking={thinking}")
+            log(f"interrogate: skill={skill} model={model} frames={image.shape[0]} thinking={thinking} instruction={'yes' if custom_instruction else 'no'}")
 
             system = SYSTEM_TEMPLATE.format(
                 skill_body=skill_body,
                 ref_names=" + ".join(n for n, _ in refs) or "none",
                 ref_text="\n\n".join(t for _, t in refs),
             )
+            if custom_instruction:
+                system += USER_INSTRUCTIONS_TEMPLATE.format(custom_instruction=custom_instruction)
 
             results = []
             for i, frame in enumerate(image):
@@ -96,6 +108,7 @@ class UniversalImageInterrogatorLocal(io.ComfyNode):
                 "ts": datetime.now().isoformat(timespec="seconds"),
                 "kind": "interrogate",
                 "task_type": f"interrogate/{skill}",
+                "instruction": custom_instruction,
                 "model": model,
                 "thinking": thinking,
                 "input": f"{image.shape[0]} frame(s)",
