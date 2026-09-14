@@ -27,6 +27,8 @@ GGUF 放 `models/LLM/`，视觉投影（文件名含 `mmproj` 的 gguf）和模�
 
 默认参数按 Qwen3.8-27B（hybrid 架构：48 层线性注意力 + 16 层全注意力，KV cache 只挂在全注意力层）调好（RTX 5070 Ti 16GB + 64GB RAM 实测）：`n_gpu_layers=32` + `n_ctx=65536`（KV 约 4GiB，其中一半随 CPU 层落在内存；生成全程显存约 12.7GiB、剩 ~3.6GiB，稳定 ~7 token/s）。注意不要把层数拉满：`n_gpu_layers=48` 会把 16GB 显存顶满，Windows 驱动开始把显存页换进内存，解码断崖跌到 1 token/s 以下；ComfyUI 常驻模型多就往 24 调（余量 ~6GiB）。`n_ctx=0` 会用满 262K 原生上下文，KV 就要 16GiB，只有 MoE + `n_cpu_moe` 把权重留内存时才开得起。跑 35B-A3B MoE 的老习惯：`n_gpu_layers=-1` + `n_cpu_moe=99` + `n_ctx=0`。`thinking` 默认关闭（需要长思维链时手动开）；生成均不设输出长度上限（到 EOS 自然结束）。新节点的模型下拉默认优先选 qwen3.8 开头的模型。
 
+送进视觉编码的图按长边缩放：参考图/探针图走 `IMAGE_LONG_EDGE=768`（多图省钱），**反推节点单独用 `INTERROGATE_LONG_EDGE=1344`**。视觉 token 数是 `(宽/32)*(高/32)`，16:9 图 768 长边只有 ~336 token、1344 长边 ~1008 token，而 llama.cpp 加载时会提示 Qwen-VL 需要 ≥1024 个图像 token 才不掉精度——反推既只有一张图、prefill 又只差 ~1 秒，没理由省这点。
+
 `keep_loaded=False`（默认）时每次生成完自动卸载；ComfyUI 的全局释放显存操作也会连带卸载本模型。连续批量改写时开 `keep_loaded=True` 可省去重复加载。
 
 ## 采样参数（跟随思考模式，Qwen3.8 官方推荐）

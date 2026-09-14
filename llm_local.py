@@ -16,6 +16,10 @@ import comfy.model_management as mm
 from .common import log
 
 IMAGE_LONG_EDGE = 768  # reference images are resized to this before encoding
+# A lone interrogation frame gets more pixels: llama.cpp warns Qwen-VL wants >=1024
+# image tokens, and the vision encoder burns (w/32)*(h/32) of them - 768 long edge is
+# only ~336 for a 16:9 frame, 1344 is ~1008, for the same ~1s of prefill.
+INTERROGATE_LONG_EDGE = 1344
 
 
 def register_llm_folder():

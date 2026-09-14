@@ -4,7 +4,7 @@ from datetime import datetime
 from comfy_api.latest import io
 
 from .common import append_history, find_history_entry, history_entry_options, log, make_progress_cb
-from .llm_local import LocalLLM, tensor_to_base64_jpeg
+from .llm_local import INTERROGATE_LONG_EDGE, LocalLLM, tensor_to_base64_jpeg
 from .nodes_local import advanced_model_inputs, build_model_config, model_input, sampling_inputs
 from .skills import load_skill, scan_skills
 
@@ -95,7 +95,7 @@ class UniversalImageInterrogatorLocal(io.ComfyNode):
                     {"role": "system", "content": system},
                     {"role": "user", "content": [
                         {"type": "text", "text": "Reverse-prompt this image."},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{tensor_to_base64_jpeg(frame)}"}},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{tensor_to_base64_jpeg(frame, max_long_edge=INTERROGATE_LONG_EDGE)}"}},
                     ]},
                 ]
                 content = LocalLLM.generate(messages, max_tokens=max_tokens, sampling=sampling, seed=seed, on_text=on_text)
