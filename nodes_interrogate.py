@@ -45,7 +45,7 @@ class UniversalImageInterrogatorLocal(io.ComfyNode):
                 model_input(),
                 io.Combo.Input("thinking", options=["disabled", "enabled"], default="disabled", advanced=True),
                 io.Float.Input("temperature", default=-1.0, min=-1.0, max=2.0, step=0.05, tooltip="-1 = auto: follow the Qwen3.8 official preset for the thinking mode (1.0 thinking / 0.7 non-thinking). >=0 = manual override; 0.3 restores the old factual default."),
-                io.Int.Input("max_tokens", default=4096, min=64, max=32768, step=64),
+                io.Int.Input("max_tokens", default=-1, min=-1, max=32768, step=64, tooltip="-1 = no cap: generate to EOS. Thinking tokens come out of this budget before the answer, so a small cap cuts the answer off mid-reasoning (the run then fails instead of handing back raw thinking)."),
                 io.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF),
                 io.Boolean.Input("keep_loaded", default=False, tooltip="Off: unload the model after generation so later nodes get the VRAM back. On: keep it resident for repeated runs."),
                 *advanced_model_inputs(),

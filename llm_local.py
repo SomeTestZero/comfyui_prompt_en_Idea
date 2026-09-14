@@ -211,27 +211,25 @@ class LocalLLM:
             cls.llm._hybrid_cache_mgr.clear()
 
     @classmethod
-    def generate(cls, messages, max_tokens, sampling, seed, on_text=None, stream=True):
+    def generate(cls, messages, max_tokens, sampling, seed, on_text=None):
         """Full reply as one string; streams progress chunks to on_text when given.
 
         sampling: dict of create_chat_completion sampling kwargs, built by
         resolve_sampling() so it follows the thinking mode unless overridden."""
         log(f"sampling: {sampling}")
-        if not stream:
-            out = cls.llm.create_chat_completion(
-                messages=messages, max_tokens=max_tokens, seed=seed, **sampling,
-            )
-            return strip_reasoning(out["choices"][0]["message"]["content"].strip())
         # thinking mode: the chat template prefills '<think>\n' into the prompt, so the
         # streamed text starts mid-reasoning without the opening tag — restore it on the
         # display copy to mark which part is reasoning (downstream output stays clean).
         display_prefix = "<think>" if cls.config and cls.config.get("thinking") else ""
+        thinking = bool(cls.config and cls.config.get("thinking"))
         chunks, last_push = [], 0.0
         t_start, t_first, pushes = time.time(), None, 0
+        finish_reason = None
         for chunk in cls.llm.create_chat_completion(
             messages=messages, max_tokens=max_tokens, seed=seed, stream=True, **sampling,
         ):
-            piece = chunk["choices"][0].get("delta", {}).get("content")
+            choice = chunk["choices"][0]
+            piece = choice.get("delta", {}).get("content")
             if piece:
                 if t_first is None:
                     t_first = time.time()
@@ -240,14 +238,24 @@ class LocalLLM:
                     last_push = time.time()
                     pushes += 1
                     on_text(display_prefix + "".join(chunks))
+            if choice.get("finish_reason"):
+                finish_reason = choice["finish_reason"]
         raw = "".join(chunks).strip()
-        if cls.config and cls.config.get("thinking") and "</think>" not in raw:
-            log("thinking enabled but no </think> block in output; passing text through as-is")
-        content = strip_reasoning(raw)
-        log(f"stream stats: first chunk +{((t_first or time.time()) - t_start):.1f}s, {len(chunks)} chunks, {pushes} pushes, total {time.time() - t_start:.1f}s")
+        log(f"stream stats: first chunk +{((t_first or time.time()) - t_start):.1f}s, {len(chunks)} chunks, {pushes} pushes, total {time.time() - t_start:.1f}s, finish={finish_reason}")
         if on_text:
             on_text(display_prefix + raw)  # the node display keeps the full process, thinking included
-        return content
+        if finish_reason == "length":
+            # A reply cut off at max_tokens (or the context limit) is incomplete: with
+            # thinking on the reasoning eats the budget before the answer even starts,
+            # with thinking off the answer itself is cut mid-sentence. Never hand back
+            # half a prompt as if it were the result.
+            raise ValueError(
+                f"generation stopped at max_tokens={max_tokens} before finishing; thinking tokens share "
+                "this budget, so raise it (-1 = no cap) or lower reasoning_effort"
+            )
+        if thinking and "</think>" not in raw:
+            log("WARNING: thinking produced no </think> before the model stopped; passing the text through as-is")
+        return strip_reasoning(raw)
 
 
 def apply_unload_hook():
