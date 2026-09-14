@@ -205,14 +205,19 @@ def chat(provider, model, system, user_content, *, temperature, seed, thinking,
     base_url, _ = resolve_provider(provider)
     key = resolve_api_key(provider, api_key)
     info = model_info(provider, model) or {}
+    controlled = info.get("thinking", "controlled") == "controlled"
     effort = (info.get("effort") or {}).get(effort_choice)
+    # Ark 400s on reasoning_effort combined with thinking disabled; with
+    # thinking off there is no depth to tune anyway.
+    if controlled and not thinking:
+        effort = None
     return call_chat_completions(
         {"base_url": base_url}, key, model, system, user_content, temperature,
         on_text=on_text,
         thinking=thinking,
         seed=seed,
         max_tokens=max_tokens,
-        control_thinking=info.get("thinking", "controlled") == "controlled",
+        control_thinking=controlled,
         reasoning_effort=effort,
     )
 

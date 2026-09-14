@@ -193,16 +193,23 @@ def test_chat_payload():
         # doubao: thinking switch + effort + seed, multimodal content list
         content = chat("volcengine", "doubao-seed-2-1-pro-260628", "sys",
                        [{"type": "text", "text": "u"}, {"type": "image_url", "image_url": {"url": "data:x"}}],
-                       temperature=0.7, seed=42, thinking=False, effort_choice="low",
+                       temperature=0.7, seed=42, thinking=True, effort_choice="low",
                        api_key="k", max_tokens=16384)
         assert content == "ok"
         p = captured["payload"]
         assert captured["url"] == "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
         assert p["model"] == "doubao-seed-2-1-pro-260628"
         assert p["max_tokens"] == 16384 and p["stream"] is True
-        assert p["thinking"] == {"type": "disabled"}
+        assert p["thinking"] == {"type": "enabled"}
         assert p["reasoning_effort"] == "low" and p["seed"] == 42 and p["temperature"] == 0.7
         assert p["messages"][1]["content"][1]["image_url"]["url"] == "data:x"
+        # doubao with thinking disabled: effort dropped (Ark 400s on the combo,
+        # verified against the plan endpoint: "low + disabled" InvalidParameter)
+        chat("volcengine", "doubao-seed-2-1-pro-260628", "sys", "u",
+             temperature=0.7, seed=None, thinking=False, effort_choice="low",
+             api_key="k", max_tokens=1024)
+        p = captured["payload"]
+        assert p["thinking"] == {"type": "disabled"} and "reasoning_effort" not in p
         # glm: no thinking field, medium effort mapped to high
         chat("volcengine-plan", "glm-5.3-flash", "sys", "u", temperature=0.7, seed=1,
              thinking=False, effort_choice="medium", api_key="k", max_tokens=1024)
