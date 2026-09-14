@@ -18,6 +18,7 @@ ComfyUI 自定义节点包：用本地多模态 GGUF 模型（llama.cpp）、Dee
 | `H3 Translator (Cloud API) 审核翻译` | 云端 API 版翻译：同一套结构保留翻译规则，纯文本任务，任意模型可用。 |
 | `Universal Prompt Enhancer (Local GGUF)` | 模型无关的通用版：不含 H3 视频模式推导，skill 下拉框选哪个 skill 就用哪套规则（自带 `krea2-prompt-writing`，面向 Krea 2 文生图）。支持 Autogrow 多参考图（按序对应 `<Picture 1..N>`）、`history_entry` 回放，默认生成完自动卸载模型。`prompt` 留空但接了参考图时，自动改为从图片反推意图写提示词。`lora_profile` 下拉选择 LoRA 档案后，增强器围绕档案中已验证的特征改写，不再发明与 LoRA 冲突的风格/外貌描述。 |
 | `Universal Image Interrogator (Local GGUF)` | 图片反推：skill 下拉选输出风格——`img2prompt-natural` 输出自然语言段落（Krea 2/FLUX 时代），`img2prompt-tags` 输出 booru tag 列表（SD1.5/Pony/SDXL 时代）。batch 逐帧反推并拼接结果，帧间自动清 KV 防串扰。可选 `custom_instruction` 对每帧施加引导（如“不要描述水印/logo/字幕”）。需要模型配 mmproj 视觉投影。 |
+| `Universal Image Interrogator (Cloud API)` | 云端 API 版图片反推：与本地版同一套 skill（`img2prompt-natural`/`img2prompt-tags`）、同一套 `custom_instruction` 引导、同一套逐帧反推拼接（每帧一次调用，结果间插空行分隔符，与本地版完全一致），改用多模态云端模型生成。图片输入必须选 vision 模型，选纯文本模型接图会直接报清晰错误。`history_entry` 可回放本地/云端的反推记录（不调 API）。 |
 | `LoRA Profiler (Local GGUF)` | LoRA 体检：喂一张"挂 LoRA + 探针词"跑出的图，视觉模型提取该 LoRA 稳定产出的特征（`probe_type=character` 提取身份长相，`style` 提取风格质感），按 LoRA 名存入 `lora_contexts.json`，供 Universal Prompt Enhancer 的 `lora_profile` 选用。配好的体检工作流见用户 workflows 目录 `LoRA体检(krea2).json`，换 LoRA 跑一次即可建档。人物 LoRA 注意两点：探针词开头必须带角色名（这批 LoRA 靠名字激活，不带名字跑出的是底模，档案就是废的）；同时把角色名填进 `trigger` 输入，增强器会强制最终提示词以触发词开头。体检时确认 LoraLoader 和 Profiler 上选的是同一个 LoRA。 |
 
 ## 模型放置
@@ -53,9 +54,9 @@ skill 放在包内 `skills/` 下（一个 skill 一个文件夹，含 `SKILL.md`
 
 DeepSeek API key 写在 `config.json`（见 `config.example.json`）或节点的 `api_key` 输入。运行历史存 `prompt_history.jsonl`，日志 `h3_prompt_enhancer.log`。
 
-## 云端 API 节点（Cloud API 三件套）
+## 云端 API 节点（Cloud API 四件套）
 
-三个云端节点（增强器/灵感生成/翻译）共用一个 `model` 下拉，选项为 `provider/model` 形式的 OpenAI 兼容端点组合：
+四个云端节点（增强器/灵感生成/翻译/图片反推）共用一个 `model` 下拉，选项为 `provider/model` 形式的 OpenAI 兼容端点组合：
 
 | provider | 端点 | 内置模型 | API key 环境变量 |
 | --- | --- | --- | --- |
@@ -71,5 +72,6 @@ DeepSeek API key 写在 `config.json`（见 `config.example.json`）或节点的
 - `thinking` 下拉对应 OpenAI 兼容 `thinking.type` 参数（豆包 Seed/DeepSeek 支持）；GLM-5.3 系思考常开、忽略该开关，深度由 `reasoning_effort` 控制（low/medium/high 映射 low/high/max）。
 - `reasoning_effort`：豆包直发，`auto` = 不发该参数（服务端默认）；DeepSeek 忽略。
 - `seed` 同时驱动本地抽卡与 API 请求；云端服务只能尽力复现，抽卡元素本身是完全可复现的。
-- 云端节点的输出/历史与本地节点写同一份 `prompt_history.jsonl`，`history_entry` 可跨后端回放（记录带 `cloud/`、`local/` 前缀区分）。
+- 云端节点的输出/历史与本地节点写同一份 `prompt_history.jsonl`，`history_entry` 可跨后端回放（记录带 `cloud/`、`local/` 前缀区分）；下拉只列同类记录（增强/灵感/反推按 `kind` 各自过滤，反推列表不会混进增强结果）。
 - 火山方舟多模态传图用 OpenAI 兼容 `image_url`（base64 data URL，长边 768 缩放后 JPEG），与本地 mmproj 同一套图片预处理。
+- 2026-09-14 实测：`UniversalImageInterrogatorCloud` 在 `volcengine-plan/glm-5.3-flash` 上通过红/绿定位测试（vision 真实生效），`img2prompt-natural`/`img2prompt-tags` 两个 skill 的输出格式均正确，`custom_instruction` 引导与 `history_entry` 回放均生效。

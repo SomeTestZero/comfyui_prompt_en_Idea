@@ -23,6 +23,7 @@ from .nodes_idea import (
     build_segment_note,
     collect_idea_frames,
 )
+from .nodes_interrogate import INTERROGATE_SYSTEM, INTERROGATE_USER_INSTRUCTIONS
 from .nodes_local import (
     SYSTEM_TEMPLATE,
     build_enhance_user_text,
@@ -128,6 +129,7 @@ DEFAULT_MODEL = "volcengine-plan/glm-5.3-flash"
 IDEA_MAX_TOKENS = 16384
 ENHANCE_MAX_TOKENS = 16384
 TRANSLATE_MAX_TOKENS = 8192
+INTERROGATE_MAX_TOKENS = 16384
 
 
 def cloud_model_options():
@@ -461,6 +463,90 @@ class H3TranslatorCloud(io.ComfyNode):
             )
             log(f"translation ({len(content)} chars):\n{content[:1000]}")
             return io.NodeOutput(content)
+        except Exception as e:
+            log(f"ERROR: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+            raise
+
+
+class UniversalImageInterrogatorCloud(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        skills = scan_skills()
+        default_skill = "img2prompt-natural" if "img2prompt-natural" in skills else skills[0]
+        return io.Schema(
+            node_id="UniversalImageInterrogatorCloud",
+            display_name="Universal Image Interrogator (Cloud API)",
+            category="prompt",
+            description="Cloud API variant of the Universal Image Interrogator: the same skill-guided reverse prompt (img2prompt-natural for Krea 2/FLUX-era models, img2prompt-tags for SD1.5/Pony/SDXL-era models) and custom_instruction steering, written by a multimodal cloud model instead of a local GGUF. Batches are described frame by frame with one call each and joined with the same separator as the local node. Image input needs a vision model - a text-only model is rejected up front. Supports history_entry replay of interrogations from either backend.",
+            inputs=[
+                io.Image.Input("image", tooltip="Image(s) to reverse-prompt. A batch is processed frame by frame and the results are joined."),
+                io.Combo.Input("skill", options=skills, default=default_skill, tooltip="img2prompt-natural: natural-language prompt. img2prompt-tags: booru-style comma-separated tag list."),
+                io.String.Input("custom_instruction", multiline=True, default="", optional=True, tooltip="Steering request applied to every frame, e.g. 'Do not mention watermarks, logos, or subtitles.' Empty = plain skill behavior."),
+                model_combo(),
+                io.Combo.Input("thinking", options=["disabled", "enabled"], default="disabled", advanced=True, tooltip="Deep-thinking switch (thinking.type). Doubao Seed and DeepSeek honor it; GLM models always think and ignore this - reasoning_effort controls their depth."),
+                io.Float.Input("temperature", default=0.3, min=0.0, max=2.0, step=0.05, tooltip="Sampling temperature; faithfulness matters here, so the default sits below the enhancer's 0.7. Other sampling knobs follow the provider's server defaults."),
+                io.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF, tooltip="Sent to the API for every frame; cloud serving reproduces outputs on a best-effort basis only."),
+                io.Combo.Input("reasoning_effort", options=["auto", "low", "medium", "high"], default="low", advanced=True, tooltip="Thinking depth. Doubao: sent as reasoning_effort (auto = server default). GLM: low/medium/high map to low/high/max (always thinking). DeepSeek ignores it."),
+                io.Combo.Input("history_entry", options=history_entry_options(kind="interrogate"), default="none", optional=True, tooltip="Replay a stored interrogation (local or cloud) instead of calling the API. List refreshes when the node is created or the page reloads."),
+                io.String.Input("api_key", default="", optional=True, tooltip="API key for the selected provider, overriding config.json and the environment variable for this run."),
+            ],
+            outputs=[io.String.Output(display_name="description")],
+            hidden=[io.Hidden.unique_id],
+        )
+
+    @classmethod
+    def execute(cls, image, skill, model, thinking, temperature, seed,
+                reasoning_effort="low", custom_instruction="", history_entry="none", api_key=""):
+        custom_instruction = custom_instruction.strip()
+        if history_entry != "none":
+            e = find_history_entry(history_entry, kind="interrogate")
+            if e is None:
+                raise ValueError(f"History entry not found (list may be stale, reselect it): {history_entry}")
+            log(f"history replay: {history_entry}")
+            return io.NodeOutput(e.get("output", ""))
+
+        provider, model_id = parse_model_option(model)
+        frames = list(image)
+        require_vision(provider, model_id, frames)
+
+        skill_body, refs = load_skill(skill, mode="generic")
+        system = INTERROGATE_SYSTEM.format(
+            skill_body=skill_body,
+            ref_names=" + ".join(n for n, _ in refs) or "none",
+            ref_text="\n\n".join(t for _, t in refs),
+        )
+        if custom_instruction:
+            system += INTERROGATE_USER_INSTRUCTIONS.format(custom_instruction=custom_instruction)
+
+        try:
+            log(f"cloud interrogate: provider={provider} model={model_id} skill={skill} frames={len(frames)} thinking={thinking} effort={reasoning_effort} instruction={'yes' if custom_instruction else 'no'}")
+            log(f"system prompt:\n{system}")
+            on_text = make_progress_cb(cls.hidden.unique_id)
+
+            results = []
+            for i, frame in enumerate(frames):
+                content = chat(
+                    provider, model_id, system,
+                    [{"type": "text", "text": "Reverse-prompt this image."}, image_part(frame)],
+                    temperature=temperature, seed=seed, thinking=thinking == "enabled",
+                    effort_choice=reasoning_effort, api_key=api_key,
+                    max_tokens=INTERROGATE_MAX_TOKENS, on_text=on_text,
+                )
+                log(f"frame {i + 1}/{len(frames)} ({len(content)} chars):\n{content[:1000]}")
+                results.append(content.strip())
+
+            output = "\n\n---\n\n".join(results)
+            append_history({
+                "ts": datetime.now().isoformat(timespec="seconds"),
+                "kind": "interrogate",
+                "task_type": f"cloud/interrogate/{skill}",
+                "instruction": custom_instruction,
+                "model": f"{provider}/{model_id}",
+                "thinking": thinking,
+                "input": f"{len(frames)} frame(s)",
+                "output": output,
+            })
+            return io.NodeOutput(output)
         except Exception as e:
             log(f"ERROR: {type(e).__name__}: {e}\n{traceback.format_exc()}")
             raise

@@ -8,7 +8,7 @@ from .llm_local import LocalLLM, tensor_to_base64_jpeg
 from .nodes_local import advanced_model_inputs, build_model_config, model_input, sampling_inputs
 from .skills import load_skill, scan_skills
 
-SYSTEM_TEMPLATE = """You are a forensic visual analyst for generative image models. Analyze the attached image as visual evidence and produce a reverse prompt strictly following the installed skill guide below.
+INTERROGATE_SYSTEM = """You are a forensic visual analyst for generative image models. Analyze the attached image as visual evidence and produce a reverse prompt strictly following the installed skill guide below.
 
 Rules:
 - Describe only what is actually visible in the image; never invent appearance details, identities, brands, or camera metadata.
@@ -20,7 +20,7 @@ Rules:
 === REFERENCES: {ref_names} ===
 {ref_text}"""
 
-USER_INSTRUCTIONS_TEMPLATE = """
+INTERROGATE_USER_INSTRUCTIONS = """
 
 === USER INSTRUCTIONS ===
 The user steered this run with the request below. Follow it when deciding what to describe or leave out, but never let it make you invent content or break the skill's output format.
@@ -49,7 +49,7 @@ class UniversalImageInterrogatorLocal(io.ComfyNode):
                 io.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF),
                 io.Boolean.Input("keep_loaded", default=False, tooltip="Off: unload the model after generation so later nodes get the VRAM back. On: keep it resident for repeated runs."),
                 *advanced_model_inputs(),
-                io.Combo.Input("history_entry", options=history_entry_options(), default="none", optional=True, tooltip="Replay a stored run instead of calling the model. List refreshes when the node is created or the page reloads."),
+                io.Combo.Input("history_entry", options=history_entry_options(kind="interrogate"), default="none", optional=True, tooltip="Replay a stored interrogation (local or cloud) instead of calling the model. List refreshes when the node is created or the page reloads."),
                 *sampling_inputs(),
             ],
             outputs=[io.String.Output(display_name="description")],
@@ -63,7 +63,7 @@ class UniversalImageInterrogatorLocal(io.ComfyNode):
                 reasoning_effort="low"):
         custom_instruction = custom_instruction.strip()
         if history_entry != "none":
-            e = find_history_entry(history_entry)
+            e = find_history_entry(history_entry, kind="interrogate")
             if e is None:
                 raise ValueError(f"History entry not found (list may be stale, reselect it): {history_entry}")
             log(f"history replay: {history_entry}")
@@ -81,13 +81,13 @@ class UniversalImageInterrogatorLocal(io.ComfyNode):
             on_text = make_progress_cb(cls.hidden.unique_id)
             log(f"interrogate: skill={skill} model={model} frames={image.shape[0]} thinking={thinking} instruction={'yes' if custom_instruction else 'no'}")
 
-            system = SYSTEM_TEMPLATE.format(
+            system = INTERROGATE_SYSTEM.format(
                 skill_body=skill_body,
                 ref_names=" + ".join(n for n, _ in refs) or "none",
                 ref_text="\n\n".join(t for _, t in refs),
             )
             if custom_instruction:
-                system += USER_INSTRUCTIONS_TEMPLATE.format(custom_instruction=custom_instruction)
+                system += INTERROGATE_USER_INSTRUCTIONS.format(custom_instruction=custom_instruction)
 
             results = []
             for i, frame in enumerate(image):
@@ -107,7 +107,7 @@ class UniversalImageInterrogatorLocal(io.ComfyNode):
             append_history({
                 "ts": datetime.now().isoformat(timespec="seconds"),
                 "kind": "interrogate",
-                "task_type": f"interrogate/{skill}",
+                "task_type": f"local/interrogate/{skill}",
                 "instruction": custom_instruction,
                 "model": model,
                 "thinking": thinking,

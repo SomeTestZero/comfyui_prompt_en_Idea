@@ -55,9 +55,9 @@ def history_label(e):
     return f"{e.get('ts', '?')} | {task} | {e.get('input', '')[:40]}"
 
 
-def history_entry_options(limit=100):
+def history_entry_options(limit=100, kind="optimize"):
     labels = ["none"]
-    for e in reversed([e for e in read_history() if e.get("kind") == "optimize"][-limit:]):
+    for e in reversed([e for e in read_history() if e.get("kind") == kind][-limit:]):
         label = history_label(e)
         while label in labels:  # same-second generations can collide
             label += " "
@@ -65,9 +65,9 @@ def history_entry_options(limit=100):
     return labels
 
 
-def find_history_entry(label):
+def find_history_entry(label, kind="optimize"):
     for e in reversed(read_history()):
-        if e.get("kind") == "optimize" and history_label(e) == label.rstrip():
+        if e.get("kind") == kind and history_label(e) == label.rstrip():
             return e
     return None
 

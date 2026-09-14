@@ -243,10 +243,77 @@ def test_chat_payload():
     print("chat_payload OK")
 
 
+def test_interrogate_cloud_node():
+    """The cloud interrogator: one call per frame, joined like the local node,
+    an interrogate history record, and kind-filtered history replay."""
+    import torch
+    import h3_prompt_enhancer.common as common
+
+    node = nodes_cloud.UniversalImageInterrogatorCloud.PREPARE_CLASS_CLONE(None)
+    calls = []
+
+    def fake_chat(provider, model, system, user_content, **kw):
+        calls.append({"provider": provider, "model": model, "system": system,
+                      "user": user_content, "kw": kw})
+        return f"desc{len(calls)}"
+
+    old_chat, old_path = nodes_cloud.chat, common.HISTORY_PATH
+    fd, hist = tempfile.mkstemp(suffix=".jsonl")
+    os.close(fd)
+    nodes_cloud.chat = fake_chat
+    common.HISTORY_PATH = hist
+    try:
+        out = node.execute(image=torch.rand(2, 8, 8, 3), skill="img2prompt-tags",
+                           model="volcengine-plan/glm-5.3-flash", thinking="enabled",
+                           temperature=0.3, seed=7, reasoning_effort="low",
+                           custom_instruction="  no watermarks  ")
+        assert out.result == ("desc1\n\n---\n\ndesc2",), out.result
+        assert len(calls) == 2
+        first = calls[0]
+        assert (first["provider"], first["model"]) == ("volcengine-plan", "glm-5.3-flash")
+        assert "=== USER INSTRUCTIONS ===" in first["system"] and "no watermarks" in first["system"]
+        assert "image_url" in first["user"][1]["type"]
+        assert first["user"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+        assert first["kw"] == {"temperature": 0.3, "seed": 7, "thinking": True,
+                              "effort_choice": "low", "api_key": "",
+                              "max_tokens": nodes_cloud.INTERROGATE_MAX_TOKENS, "on_text": None}
+        # history: interrogate record with the cloud/ prefix, invisible to the
+        # optimize-only dropdowns
+        entries = common.read_history()
+        assert len(entries) == 1
+        e = entries[0]
+        assert (e["kind"], e["task_type"], e["model"]) == (
+            "interrogate", "cloud/interrogate/img2prompt-tags", "volcengine-plan/glm-5.3-flash")
+        assert e["instruction"] == "no watermarks" and e["input"] == "2 frame(s)"
+        assert nodes_cloud.history_entry_options() == ["none"]
+        labels = nodes_cloud.history_entry_options(kind="interrogate")
+        assert len(labels) == 2 and labels[1].endswith("cloud/interrogate/img2prompt-tags | 2 frame(s)")
+        # replay: no API call, the stored output comes back
+        calls.clear()
+        out = node.execute(image=torch.rand(1, 8, 8, 3), skill="img2prompt-natural",
+                           model="volcengine-plan/glm-5.3-flash", thinking="disabled",
+                           temperature=0.3, seed=0, history_entry=labels[1])
+        assert out.result == ("desc1\n\n---\n\ndesc2",) and calls == []
+        # a text-only model never receives the image
+        try:
+            node.execute(image=torch.rand(1, 8, 8, 3), skill="img2prompt-tags",
+                         model="volcengine-plan/glm-5.3", thinking="disabled",
+                         temperature=0.3, seed=0)
+            raise AssertionError("should raise")
+        except ValueError as err:
+            assert "does not accept image input" in str(err)
+        assert calls == []
+    finally:
+        nodes_cloud.chat, common.HISTORY_PATH = old_chat, old_path
+        os.unlink(hist)
+    print("interrogate_cloud_node OK")
+
+
 if __name__ == "__main__":
     test_parse_and_options()
     test_resolve_provider_and_key()
     test_model_info_and_vision()
     test_image_part_and_replay()
     test_chat_payload()
+    test_interrogate_cloud_node()
     print("ALL CLOUD OFFLINE TESTS PASSED")
