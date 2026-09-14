@@ -13,13 +13,43 @@ import numpy as np
 import folder_paths
 import comfy.model_management as mm
 
-from .common import log
+from .common import load_config, log
 
 IMAGE_LONG_EDGE = 768  # reference images are resized to this before encoding
 # A lone interrogation frame gets more pixels: llama.cpp warns Qwen-VL wants >=1024
 # image tokens, and the vision encoder burns (w/32)*(h/32) of them - 768 long edge is
 # only ~336 for a 16:9 frame, 1344 is ~1008, for the same ~1s of prefill.
 INTERROGATE_LONG_EDGE = 1344
+
+# Hidden knobs of the GGUF backend, overridable per install from config.json's "local"
+# section (see README): image quality/size and the two load-time options that matter on
+# a 16GB card. Read on every use, so a saved edit applies to the next run.
+LOCAL_OPTIONS = {
+    "image_long_edge": IMAGE_LONG_EDGE,
+    "interrogate_long_edge": INTERROGATE_LONG_EDGE,
+    "jpeg_quality": 85,
+    "kv_type": "",           # ggml KV cache type name, e.g. q8_0 (halves the ~4GiB KV); "" = f16
+    "image_min_tokens": -1,  # mtmd vision token floor/ceiling, -1 = whatever the model metadata says
+    "image_max_tokens": -1,
+}
+
+
+def local_options():
+    overrides = load_config().get("local") or {}
+    unknown = sorted(set(overrides) - set(LOCAL_OPTIONS))
+    if unknown:
+        raise ValueError(f"unknown key(s) under \"local\" in config.json: {', '.join(unknown)}; supported: {', '.join(LOCAL_OPTIONS)}")
+    return {**LOCAL_OPTIONS, **overrides}
+
+
+def resolve_kv_type(name):
+    """llama.cpp wants a ggml type id for type_k/type_v; accept the usual names."""
+    from llama_cpp._ggml import GGMLType
+
+    key = f"GGML_TYPE_{name.strip().upper()}"
+    if not hasattr(GGMLType, key):
+        raise ValueError(f'config.json "local".kv_type must be a ggml type name such as q8_0 or f16, got {name!r}')
+    return int(getattr(GGMLType, key))
 
 
 def register_llm_folder():
@@ -50,10 +80,15 @@ def find_mmproj(model_rel_path):
     return None
 
 
-def tensor_to_base64_jpeg(image, max_long_edge=IMAGE_LONG_EDGE):
-    """ComfyUI IMAGE tensor ([H,W,C] or [1,H,W,C], float 0-1) -> base64 jpeg."""
+def tensor_to_base64_jpeg(image, max_long_edge=None):
+    """ComfyUI IMAGE tensor ([H,W,C] or [1,H,W,C], float 0-1) -> base64 jpeg.
+
+    Size and quality come from config.json "local" unless the caller overrides the
+    size (the interrogator does - it is allowed to spend more on its single frame)."""
     from PIL import Image
 
+    options = local_options()
+    max_long_edge = max_long_edge or options["image_long_edge"]
     arr = np.clip(255.0 * image.cpu().numpy().squeeze(), 0, 255).astype(np.uint8)
     pil = Image.fromarray(arr)
     w, h = pil.size
@@ -61,7 +96,7 @@ def tensor_to_base64_jpeg(image, max_long_edge=IMAGE_LONG_EDGE):
     if scale < 1.0:
         pil = pil.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
-    pil.save(buf, format="JPEG", quality=85)
+    pil.save(buf, format="JPEG", quality=int(options["jpeg_quality"]))
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
@@ -178,6 +213,8 @@ class LocalLLM:
             handler = Qwen35ChatHandler(
                 mmproj_path=mmproj,
                 enable_thinking=config.get("thinking", False),
+                image_min_tokens=config.get("image_min_tokens", -1),
+                image_max_tokens=config.get("image_max_tokens", -1),
                 verbose=False,
             )
             # Qwen3.8 thinking-depth knob; silently ignored by templates that don't define it
@@ -186,7 +223,9 @@ class LocalLLM:
         kwargs = {}
         if config.get("n_cpu_moe", 0) > 0:
             kwargs["n_cpu_moe"] = config["n_cpu_moe"]
-        log(f"loading model: {config['model_path']} (n_gpu_layers={config['n_gpu_layers']}, n_ctx={config['n_ctx']}, n_cpu_moe={kwargs.get('n_cpu_moe', 0)})")
+        if config.get("kv_type"):
+            kwargs["type_k"] = kwargs["type_v"] = resolve_kv_type(config["kv_type"])
+        log(f"loading model: {config['model_path']} (n_gpu_layers={config['n_gpu_layers']}, n_ctx={config['n_ctx']}, n_cpu_moe={kwargs.get('n_cpu_moe', 0)}, kv_type={config.get('kv_type') or 'f16'}, image_tokens={config.get('image_min_tokens', -1)}..{config.get('image_max_tokens', -1)})")
         cls.llm = Llama(
             config["model_path"],
             chat_handler=handler,

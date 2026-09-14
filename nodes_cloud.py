@@ -14,7 +14,7 @@ from .common import (
     log,
     make_progress_cb,
 )
-from .llm_local import tensor_to_base64_jpeg
+from .llm_local import IMAGE_LONG_EDGE, tensor_to_base64_jpeg
 from .nodes_api import TRANSLATE_SYSTEM
 from .nodes_idea import (
     IDEA_SYSTEM,
@@ -196,9 +196,11 @@ def require_vision(provider, model, frames):
 
 
 def image_part(frame):
+    # Pinned to the built-in edge: the config.json "local" knobs are for the local GGUF
+    # backend, and the cloud APIs bill per image token.
     return {
         "type": "image_url",
-        "image_url": {"url": f"data:image/jpeg;base64,{tensor_to_base64_jpeg(frame)}"},
+        "image_url": {"url": f"data:image/jpeg;base64,{tensor_to_base64_jpeg(frame, max_long_edge=IMAGE_LONG_EDGE)}"},
     }
 
 

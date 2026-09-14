@@ -5,7 +5,7 @@ from datetime import datetime
 from comfy_api.latest import io
 
 from .common import append_history, find_history_entry, history_entry_options, log, make_progress_cb
-from .llm_local import LocalLLM, find_mmproj, list_gguf_models, register_llm_folder, tensor_to_base64_jpeg
+from .llm_local import LocalLLM, find_mmproj, list_gguf_models, local_options, register_llm_folder, tensor_to_base64_jpeg
 from .nodes_api import TRANSLATE_SYSTEM
 from .skills import MODES, load_skill, scan_skills
 
@@ -77,6 +77,7 @@ def build_model_config(model, thinking, n_ctx, n_gpu_layers, n_cpu_moe, reasonin
         raise ValueError("No GGUF model found under models/LLM.")
     register_llm_folder()
     model = model.replace("/", os.sep)  # tolerate forward slashes from cross-platform workflows
+    options = local_options()
     return {
         "model_path": folder_paths.get_full_path("LLM", model),
         "mmproj": find_mmproj(model),
@@ -85,6 +86,11 @@ def build_model_config(model, thinking, n_ctx, n_gpu_layers, n_cpu_moe, reasonin
         "n_ctx": n_ctx,
         "n_cpu_moe": n_cpu_moe,
         "reasoning_effort": reasoning_effort,
+        # Load-time options from config.json "local"; part of the config so that
+        # changing one reloads the model instead of reusing the cached instance.
+        "kv_type": options["kv_type"],
+        "image_min_tokens": options["image_min_tokens"],
+        "image_max_tokens": options["image_max_tokens"],
     }
 
 

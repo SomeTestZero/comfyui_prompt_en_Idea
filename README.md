@@ -27,7 +27,7 @@ GGUF 放 `models/LLM/`，视觉投影（文件名含 `mmproj` 的 gguf）和模�
 
 默认参数按 Qwen3.8-27B（hybrid 架构：48 层线性注意力 + 16 层全注意力，KV cache 只挂在全注意力层）调好（RTX 5070 Ti 16GB + 64GB RAM 实测）：`n_gpu_layers=32` + `n_ctx=65536`（KV 约 4GiB，其中一半随 CPU 层落在内存；生成全程显存约 12.7GiB、剩 ~3.6GiB，稳定 ~7 token/s）。注意不要把层数拉满：`n_gpu_layers=48` 会把 16GB 显存顶满，Windows 驱动开始把显存页换进内存，解码断崖跌到 1 token/s 以下；ComfyUI 常驻模型多就往 24 调（余量 ~6GiB）。`n_ctx=0` 会用满 262K 原生上下文，KV 就要 16GiB，只有 MoE + `n_cpu_moe` 把权重留内存时才开得起。跑 35B-A3B MoE 的老习惯：`n_gpu_layers=-1` + `n_cpu_moe=99` + `n_ctx=0`。`thinking` 默认关闭（需要长思维链时手动开）；生成均不设输出长度上限（到 EOS 自然结束）。新节点的模型下拉默认优先选 qwen3.8 开头的模型。
 
-送进视觉编码的图按长边缩放：参考图/探针图走 `IMAGE_LONG_EDGE=768`（多图省钱），**反推节点单独用 `INTERROGATE_LONG_EDGE=1344`**。视觉 token 数是 `(宽/32)*(高/32)`，16:9 图 768 长边只有 ~336 token、1344 长边 ~1008 token，而 llama.cpp 加载时会提示 Qwen-VL 需要 ≥1024 个图像 token 才不掉精度——反推既只有一张图、prefill 又只差 ~1 秒，没理由省这点。
+送进视觉编码的图按长边缩放：参考图/探针图走 `IMAGE_LONG_EDGE=768`（多图省钱），**反推节点单独用 `INTERROGATE_LONG_EDGE=1344`**（两者都可在 `config.json` 的 `local` 段覆盖）。视觉 token 数是 `(宽/32)*(高/32)`，16:9 图 768 长边只有 ~336 token、1344 长边 ~1008 token，而 llama.cpp 加载时会提示 Qwen-VL 需要 ≥1024 个图像 token 才不掉精度——反推既只有一张图、prefill 又只差 ~1 秒，没理由省这点。
 
 `keep_loaded=False`（默认）时每次生成完自动卸载；ComfyUI 的全局释放显存操作也会连带卸载本模型。连续批量改写时开 `keep_loaded=True` 可省去重复加载。
 
@@ -57,6 +57,21 @@ skill 放在包内 `skills/` 下（一个 skill 一个文件夹，含 `SKILL.md`
 ## 配置
 
 DeepSeek API key 写在 `config.json`（见 `config.example.json`）或节点的 `api_key` 输入。运行历史存 `prompt_history.jsonl`，日志 `h3_prompt_enhancer.log`。
+
+### 本地后端隐藏参数（`config.json` 的 `local` 段）
+
+本地节点的控件只有 model / thinking / temperature / seed / keep_loaded / n_ctx / n_gpu_layers / n_cpu_moe + 采样组，其余后端参数放在 `config.json`——**不要往已发布节点插新控件**：工作流按位置存值（且尾部还有 `history_entry` 这类可接线控件），插在中间会让旧工作流的值整体错位。`local` 段每次运行重新读取（改 `kv_type`/`image_*_tokens` 会触发模型重新加载），写错过键名会直接报错并列出可用键：
+
+| 键 | 默认 | 作用 |
+| --- | --- | --- |
+| `image_long_edge` | 768 | 参考图 / LoRA 探针图送视觉编码的长边 |
+| `interrogate_long_edge` | 1344 | 反推单帧的长边（见上文视觉 token 推算） |
+| `jpeg_quality` | 85 | 编码 JPEG 质量，只影响细节保留与 base64 体积 |
+| `kv_type` | `""`（=f16） | KV cache 精度，如 `q8_0`：n_ctx=65536 时 KV 约从 4GiB 降到 2GiB，省下的显存可以把 `n_gpu_layers` 往上提；`q4_0` 更省但可能掉质量 |
+| `image_min_tokens` | -1 | mtmd 视觉 token 下限（-1=按模型元数据）。就是 llama.cpp 那条“Qwen-VL 需要 ≥1024 图像 token”警告的开关，设 1024 会把小图主动放大补足 |
+| `image_max_tokens` | -1 | mtmd 视觉 token 上限：给超大输入封顶，免得 2K/4K 图把 prefill 吃满 |
+
+云端节点不受这些影响（图片编码固定 768 长边，API 按图像 token 计费）。
 
 ## 云端 API 节点（Cloud API 四件套）
 

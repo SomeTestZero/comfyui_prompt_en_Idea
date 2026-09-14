@@ -1,6 +1,14 @@
 {
   "api_key": "sk-your-deepseek-api-key-here",
   "base_url": "https://api.deepseek.com",
+  "local": {
+    "image_long_edge": 768,
+    "interrogate_long_edge": 1344,
+    "jpeg_quality": 85,
+    "kv_type": "",
+    "image_min_tokens": -1,
+    "image_max_tokens": -1
+  },
   "cloud": {
     "volcengine": {
       "api_key": "your-ark-api-key-here"
