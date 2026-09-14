@@ -66,7 +66,7 @@ def sampling_inputs():
         io.Float.Input("top_p", default=-1.0, min=-1.0, max=1.0, step=0.05, advanced=True, tooltip="-1 = auto (Qwen3.8 official: 0.95 thinking / 0.8 non-thinking). >=0 = manual override."),
         io.Int.Input("top_k", default=-1, min=-1, max=500, advanced=True, tooltip="-1 = auto (Qwen3.8 official: 20 both modes). >=0 = manual override."),
         io.Float.Input("presence_penalty", default=-1.0, min=-1.0, max=2.0, step=0.05, advanced=True, tooltip="-1 = auto (Qwen3.8 official: 0.0 thinking / 1.5 non-thinking). >=0 = manual override."),
-        io.Combo.Input("reasoning_effort", options=["xhigh", "medium", "low"], default="low", advanced=True, tooltip="Qwen3.8 thinking depth, only with thinking enabled (default low = short reasoning, fastest; xhigh = the model's official default). Passed to the chat template; models whose template doesn't define it ignore it."),
+        io.Combo.Input("reasoning_effort", options=["xhigh", "medium", "low"], default="low", advanced=True, tooltip="Qwen3.8 thinking depth, only with thinking enabled (default low = short reasoning, fastest; xhigh = the model's official default). Passed into the chat template, but the mmproj vision path renders with llama-cpp-python's built-in Qwen template, which has no such variable - so on image runs it currently has no effect (verified: low and xhigh produce identical output)."),
     ]
 
 

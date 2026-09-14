@@ -255,7 +255,7 @@ class LocalLLM:
             # half a prompt as if it were the result.
             raise ValueError(
                 f"generation stopped at max_tokens={max_tokens} before finishing; thinking tokens share "
-                "this budget, so raise it (-1 = no cap) or lower reasoning_effort"
+                "this budget, so raise it (-1 = no cap)"
             )
         if thinking and "</think>" not in raw:
             log("WARNING: thinking produced no </think> before the model stopped; passing the text through as-is")
