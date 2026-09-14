@@ -42,7 +42,7 @@ GGUF 放 `models/LLM/`，视觉投影（文件名含 `mmproj` 的 gguf）和模�
 | top_k | 20 | 20 |
 | presence_penalty | 0.0 | 1.5 |
 
-把某个控件改成 ≥0 的值即对该参数单独手动接管，其余仍跟随模式。`min_p=0.0`、`repeat_penalty=1.0` 按官方值固定（旧版走 llama-cpp 默认的 0.05/1.1，与 Qwen 官方不符，2026-08-16 起修正）。`reasoning_effort`（`xhigh`/`medium`/`low`，默认 `low`，模型官方默认是 `xhigh`）本该控制思考深度，**但带 mmproj 时实际无效**：llama-cpp-python 的 MTMD handler 用它自己的内置 Qwen 模板渲染（`_resolve_chat_format` 里 `self.chat_format` 已被内置模板占位，GGUF 内嵌模板中定义 `reasoning_effort` 的那段根本没参与），内置模板里没有这个变量——实测 `low` 与 `xhigh` 两次生成的 token 数（544/316/227）与输出完全一致。要让它生效得把 GGUF 的 `tokenizer.chat_template` 读出来经 `chat_template_override` 交给 handler，但那会同时换掉多图编号（`Picture N`）与系统消息合并的渲染方式，需重新验证，暂未做。反推/翻译类任务想要旧的低温度手感，把 `temperature` 手动设 0.3 即可。
+把某个控件改成 ≥0 的值即对该参数单独手动接管，其余仍跟随模式。`min_p=0.0`、`repeat_penalty=1.0` 按官方值固定（旧版走 llama-cpp 默认的 0.05/1.1，与 Qwen 官方不符，2026-08-16 起修正）；惩罚类参数实际只看最近 `penalty_last_n` 个 token（llama-cpp 默认 64，可在 config.json 调，见下节）。`reasoning_effort`（`xhigh`/`medium`/`low`，默认 `low`，模型官方默认是 `xhigh`）本该控制思考深度，**但带 mmproj 时实际无效**：llama-cpp-python 的 MTMD handler 用它自己的内置 Qwen 模板渲染（`_resolve_chat_format` 里 `self.chat_format` 已被内置模板占位，GGUF 内嵌模板中定义 `reasoning_effort` 的那段根本没参与），内置模板里没有这个变量——实测 `low` 与 `xhigh` 两次生成的 token 数（544/316/227）与输出完全一致。要让它生效得把 GGUF 的 `tokenizer.chat_template` 读出来经 `chat_template_override` 交给 handler，但那会同时换掉多图编号（`Picture N`）与系统消息合并的渲染方式，需重新验证，暂未做。反推/翻译类任务想要旧的低温度手感，把 `temperature` 手动设 0.3 即可。
 
 `max_tokens` 默认 `-1`（不设上限，到 EOS 自然结束）：思考内容和答案共用这一个生成预算、推理先花，所以同一段输入开思考后耗的 token 成倍上涨（实测反推一帧：思考关 196 token，思考开 544＝316 推理＋227 答案）。任何截断（不论停在推理段还是答案段）节点都直接报错要求调大，而不是把半截内容当结果返回；批量反推想给每帧留个安全阀，就把 `max_tokens` 设成 `-1` 以外的值，4096 已经比实测用量宽一个量级。
 
@@ -56,7 +56,7 @@ skill 放在包内 `skills/` 下（一个 skill 一个文件夹，含 `SKILL.md`
 
 ## 配置
 
-DeepSeek API key 写在 `config.json`（见 `config.example.json`）或节点的 `api_key` 输入。运行历史存 `prompt_history.jsonl`，日志 `h3_prompt_enhancer.log`。
+DeepSeek API key 写在 `config.json`（见 `config.example.json`）或节点的 `api_key` 输入。运行历史存 `prompt_history.jsonl`，日志 `h3_prompt_enhancer.log`（两者超过 8MB 自动裁尾）。
 
 ### 本地后端隐藏参数（`config.json` 的 `local` 段）
 
@@ -70,6 +70,8 @@ DeepSeek API key 写在 `config.json`（见 `config.example.json`）或节点的
 | `kv_type` | `""`（=f16） | KV cache 精度，如 `q8_0`：n_ctx=65536 时 KV 约从 4GiB 降到 2GiB，省下的显存可以把 `n_gpu_layers` 往上提；`q4_0` 更省但可能掉质量 |
 | `image_min_tokens` | -1 | mtmd 视觉 token 下限（-1=按模型元数据）。就是 llama.cpp 那条“Qwen-VL 需要 ≥1024 图像 token”警告的开关，设 1024 会把小图主动放大补足 |
 | `image_max_tokens` | -1 | mtmd 视觉 token 上限：给超大输入封顶，免得 2K/4K 图把 prefill 吃满 |
+| `max_tokens` | -1 | 给**没有 max_tokens 控件的节点**（H3 增强器/翻译/灵感生成）设一个统一生成上限，-1=到 EOS；有控件的节点仍以控件为准，不读这个键 |
+| `penalty_last_n` | 64 | repeat/present 惩罚能看到的 token 窗口（llama.cpp 默认 64，`-1`=整个上下文）。Qwen 官方 `presence_penalty=1.5` 的口径是全序列，嫌输出复读就调大（如 512） |
 
 云端节点不受这些影响（图片编码固定 768 长边，API 按图像 token 计费）。
 

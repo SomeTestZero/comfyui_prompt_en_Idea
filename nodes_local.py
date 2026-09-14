@@ -240,7 +240,7 @@ class H3PromptEnhancerLocal(io.ComfyNode):
             log(f"local enhance: mode={mode} skill={skill} model={model} images={len(frames)} thinking={thinking}")
             log(f"user prompt: {user_text[:500]}")
             log(f"system prompt:\n{system}")
-            content = LocalLLM.generate(messages, max_tokens=-1, sampling=sampling, seed=seed, on_text=on_text)
+            content = LocalLLM.generate(messages, max_tokens=local_options()["max_tokens"], sampling=sampling, seed=seed, on_text=on_text)
             log(f"response ({len(content)} chars):\n{content[:1000]}")
             append_history({
                 "ts": datetime.now().isoformat(timespec="seconds"),
@@ -305,7 +305,7 @@ class H3TranslatorLocal(io.ComfyNode):
             log(f"local translate: target={target_lang} model={model}")
             log(f"input text: {text.strip()[:500]}")
             content = LocalLLM.generate(
-                messages, max_tokens=-1, sampling=sampling, seed=seed,
+                messages, max_tokens=local_options()["max_tokens"], sampling=sampling, seed=seed,
                 on_text=make_progress_cb(cls.hidden.unique_id),
             )
             log(f"translation ({len(content)} chars):\n{content[:1000]}")

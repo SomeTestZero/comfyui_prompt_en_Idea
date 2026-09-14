@@ -6,7 +6,7 @@ from datetime import datetime
 from comfy_api.latest import io
 
 from .common import append_history, log, make_progress_cb
-from .llm_local import LocalLLM, tensor_to_base64_jpeg
+from .llm_local import LocalLLM, local_options, tensor_to_base64_jpeg
 from .nodes_local import advanced_model_inputs, build_model_config, derive_mode, model_input, sampling_inputs
 
 IDEA_SYSTEM = """You are a screenwriter for short AI-generated videos. Write a story draft from the user's request.
@@ -28,9 +28,9 @@ MODE_GUIDANCE = {
     "L2VA": "The attached image is the video's closing keyframe. Invent the story that leads up to this final scene.",
 }
 
-# No output cap: llama.cpp treats max_tokens <= 0 as "fill the context", and
-# the system prompt bounds the length; the model stops at EOS.
-IDEA_MAX_TOKENS = -1
+# No output cap: llama.cpp treats max_tokens <= 0 as "fill the context", and the system
+# prompt bounds the length; the model stops at EOS. config.json "local".max_tokens can
+# cap it for batch runs (see README).
 
 # Seed-drawn ingredient pools, used on every run - hint or not. The seed picks
 # the combination, the model only weaves them - this keeps "random" actually
@@ -320,7 +320,7 @@ class H3IdeaGeneratorLocal(io.ComfyNode):
             ]
             log(f"idea gen: mode={mode} model={model} seed={seed} lang={language} duration={dur}s images={len(frames)} segments={total_segments}x{segment_seconds:g}s hint={hint[:100]!r}")
             log(f"user prompt: {user_text[:500]}")
-            content = LocalLLM.generate(messages, max_tokens=IDEA_MAX_TOKENS, sampling=sampling,
+            content = LocalLLM.generate(messages, max_tokens=local_options()["max_tokens"], sampling=sampling,
                                         seed=seed, on_text=make_progress_cb(cls.hidden.unique_id))
             # Stamp the runtime on the draft so the downstream enhancer can
             # schedule shot timings against the requested duration.

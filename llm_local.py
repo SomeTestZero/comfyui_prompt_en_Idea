@@ -31,6 +31,8 @@ LOCAL_OPTIONS = {
     "kv_type": "",           # ggml KV cache type name, e.g. q8_0 (halves the ~4GiB KV); "" = f16
     "image_min_tokens": -1,  # mtmd vision token floor/ceiling, -1 = whatever the model metadata says
     "image_max_tokens": -1,
+    "max_tokens": -1,        # completion cap for the nodes that have no max_tokens widget; -1 = to EOS
+    "penalty_last_n": 64,    # tokens the repeat/present penalties see (llama-cpp default; -1 = whole context)
 }
 
 
@@ -39,6 +41,9 @@ def local_options():
     unknown = sorted(set(overrides) - set(LOCAL_OPTIONS))
     if unknown:
         raise ValueError(f"unknown key(s) under \"local\" in config.json: {', '.join(unknown)}; supported: {', '.join(LOCAL_OPTIONS)}")
+    for key, value in overrides.items():
+        if not isinstance(value, type(LOCAL_OPTIONS[key])):
+            raise ValueError(f'config.json "local".{key} must be {type(LOCAL_OPTIONS[key]).__name__}, got {value!r}')
     return {**LOCAL_OPTIONS, **overrides}
 
 
@@ -126,6 +131,9 @@ def resolve_sampling(thinking, temperature=-1.0, top_p=-1.0, top_k=-1, presence_
         "min_p": preset["min_p"],
         "present_penalty": presence_penalty if presence_penalty >= 0 else preset["present_penalty"],
         "repeat_penalty": preset["repeat_penalty"],
+        # llama-cpp only applies the penalties to the last N tokens; the Qwen presets
+        # above assume the whole reply, so this is the knob that lines the two up.
+        "penalty_last_n": local_options()["penalty_last_n"],
     }
 
 

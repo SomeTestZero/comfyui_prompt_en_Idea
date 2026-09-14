@@ -11,6 +11,8 @@ LOG_PATH = os.path.join(NODE_DIR, "h3_prompt_enhancer.log")
 HISTORY_PATH = os.path.join(NODE_DIR, "prompt_history.jsonl")
 HISTORY_MAX_BYTES = 8 * 1024 * 1024
 HISTORY_KEEP_ON_TRIM = 1500
+LOG_MAX_BYTES = 8 * 1024 * 1024
+LOG_KEEP_LINES = 2000
 LORA_PROFILES_PATH = os.path.join(NODE_DIR, "lora_contexts.json")
 
 
@@ -18,6 +20,12 @@ def log(msg):
     try:
         with open(LOG_PATH, "a", encoding="utf-8") as f:
             f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+        # Prompt dumps make this file grow forever otherwise; keep the recent tail.
+        if os.path.getsize(LOG_PATH) > LOG_MAX_BYTES:
+            with open(LOG_PATH, "r", encoding="utf-8") as f:
+                tail = f.readlines()[-LOG_KEEP_LINES:]
+            with open(LOG_PATH, "w", encoding="utf-8") as f:
+                f.writelines(tail)
     except Exception:
         pass
 
