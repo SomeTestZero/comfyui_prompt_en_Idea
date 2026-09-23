@@ -14,12 +14,12 @@ IDEA_SYSTEM = """You are a screenwriter for short AI-generated videos. Write a s
 Rules:
 - The user's request is binding - subject, style, pacing, shot count, any explicit requirement. Everything left open is yours to invent, freely and concretely.
 - The draft is the only thing the downstream prompt writer ever sees. Open with one line that restates every explicit requirement in the user's words plus the standard English production term in parentheses, e.g. "风格：动漫（2D-animated）；镜头：单镜头一镜到底（one continuous take, no cuts）", then the setup: subject / setting / tone. A requirement not written in the draft is lost.
-- Then the story as filmable beats - framing, the key action, any spoken lines in quotes. Number beats only where a real cut happens; a single continuous take stays one unnumbered narration, because 镜头1、镜头2 numbering reads as cuts downstream.
+- Then the story as filmable beats - framing, the chain of concrete actions (several consecutive actions, not just one), any spoken lines in quotes. The actions of a beat must spread evenly across its full duration - the final second is still mid-motion, never winding down. Number beats only where a real cut happens; a single continuous take stays one unnumbered narration, because 镜头1、镜头2 numbering reads as cuts downstream.
 - Everything - actions, cuts, spoken lines - must be playable within {duration} seconds.{image_note}{segment_note}
 - Write in {language}. Output ONLY the story draft: no title, no commentary, no markdown."""
 
 SEGMENT_NOTE = """
-- Exception to the unnumbered-narration rule above: this single continuous take is generated as {total_segments} chained segments. After the setup, write exactly {total_segments} beats, each opening with its own label line "段1", "段2", ... ("Segment 1", "Segment 2", ... in English). {pacing} A beat covers only that segment's action and must continue seamlessly from the previous beat's ending state - no cuts, no new framing, no re-introductions. The labels are parsed mechanically downstream, so they must be exact."""
+- Exception to the unnumbered-narration rule above: this single continuous take is generated as {total_segments} chained segments forming one continuous cause-and-effect story arc - each beat is a time slice of the same unfolding event, not a separate skit. After the setup, write exactly {total_segments} beats, each opening with its own label line "段1", "段2", ... ("Segment 1", "Segment 2", ... in English). {pacing} A beat covers only that segment's action and must continue seamlessly from the previous beat's ending state - no cuts, no new framing, no re-introductions. Each beat must carry enough events to honestly fill its screen time: scale the action chain to the beat's own seconds - roughly one concrete, filmable action or reaction every 1-1.5 seconds - and keep a natural ebb and flow: intense bursts alternate with brief, still-moving transitions (repositioning, bracing, circling), so the pacing breathes instead of staying flat; never pad the seconds with slow motion, freezes, lingering gazes, or idle scenery, and keep the final second mid-motion. The camera is one unbroken eye: every beat inherits the previous beat's camera state (same position, distance and angle) and only continues it with smooth movement - follow, orbit, handheld drift; no jumps, no re-framing openings. Each beat ends with its own hand-off line "段末：" ("End of segment:" in English) stating the exact on-screen state at the final frame: subjects' poses, positions, motion direction, and the current camera framing/movement - the next segment starts from exactly this state. The labels are parsed mechanically downstream, so they must be exact."""
 
 MODE_GUIDANCE = {
     "Ref2VA": "The attached reference image(s) show the main character/subject. Keep their visible look consistent, but the place, event, and plot are yours to invent — go far beyond what the image shows.",
@@ -326,6 +326,12 @@ class H3IdeaGeneratorLocal(io.ComfyNode):
             # schedule shot timings against the requested duration.
             header = f"总时长：{dur} 秒" if language == "中文" else f"Total runtime: {dur} seconds"
             content = f"{header}\n\n{content}"
+            # 单段退化兑底：total_segments==1 时基础提示词走"无标记连续叙述"，
+            # 而 BeatPicker 无条件要求分节标记（长视频 forloop 也接它）——
+            # 此处确定性包一层「段1」，不依赖 LLM 是否自觉加标签。
+            if total_segments == 1 and not any(
+                    BEAT_LABEL.match(line.strip()) for line in content.splitlines()):
+                content = f"段1：\n{content}"
             log(f"idea ({len(content)} chars):\n{content[:500]}")
             append_history({
                 "ts": datetime.now().isoformat(timespec="seconds"),
@@ -353,6 +359,9 @@ class H3IdeaGeneratorLocal(io.ComfyNode):
 # "段 2 (8-16s): ...", "Segment 3 - ...". The optional bracket right after the
 # number carries the beat's global time range - stripped with the label.
 BEAT_LABEL = re.compile(r"^(?:段|Segment)\s*(\d+)\s*(?:\([^)]*\)|（[^）]*）)?\s*[：:.\-–]?\s*(.*)$", re.IGNORECASE)
+# Hand-off line at the end of each beat (long-take mode): the exact on-screen
+# state at the segment's final frame, which the next segment starts from.
+END_LABEL = re.compile(r"^(?:段末|End of segment)\s*[：:]\s*(.*)$", re.IGNORECASE)
 
 # Runtime header the idea generator stamps on the draft.
 RUNTIME_HEADER = re.compile(r"总时长：\s*([0-9.]+\s*秒)|Total runtime:\s*([0-9.]+\s*seconds)", re.IGNORECASE)
@@ -411,8 +420,20 @@ class H3SegmentBeatPicker(io.ComfyNode):
             lambda m: f"全片总时长：{m.group(1) or m.group(2)}（一镜到底，分 {total} 段链接生成）", setup, count=1)
         beat = "\n".join(beats[clip_index]).strip()
 
+        # Hand-off anchor: the previous beat's 段末 line, so the enhancer pins
+        # this segment's opening to what is actually on screen (the pinned
+        # Motion-Context frames) instead of re-staging from scratch.
+        prev = ""
+        if clip_index > 1:
+            for x in beats.get(clip_index - 1, []):
+                m = END_LABEL.match(x.strip())
+                if m:
+                    prev = (f"上一段结束于：{m.group(1).strip()}\n"
+                            "本段第一帧必须从这一状态直接继续——人物姿态、位置、运动方向与机位状态都不得跳变。\n")
+                    break
+
         cont = "；画面与动作紧接上一段结尾无缝继续" if clip_index > 1 else "（开场段）"
         note = f"本段：一镜到底长镜头的第 {clip_index}/{total} 段{seg}，时间码从本段 0 秒记起{cont}。"
-        out = f"{setup}\n\n{note}\n{beat}"
+        out = f"{setup}\n\n{prev}{note}\n{beat}"
         log(f"beat pick: segment {clip_index}/{total} ({len(out)} chars)")
         return io.NodeOutput(out)

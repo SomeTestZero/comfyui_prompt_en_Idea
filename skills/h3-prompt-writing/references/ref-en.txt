@@ -6,6 +6,8 @@ Write all six rewrite sections in English. Preserve the original language only f
 
 **Description detail:** Make `detailed_description` as detailed and explicit as possible. For each shot, clearly establish the current composition, subject appearance and position, environment and lighting, actions and state changes, camera movement, current sound, and the points where referenced content actually appears or takes effect. Avoid reducing the description to a plot summary or a list of reference relationships.
 
+**Action pacing (single-take spans):** When the target video is one continuous take covering a multi-second span, never write it as a plot paragraph. Lay the action out on an explicit time axis and scale it to the span's actual seconds - roughly one concrete, filmable action or reaction every 1-1.5 seconds (fewer for shorter spans, more for longer ones) - with a natural ebb and flow: intense bursts alternate with brief, still-moving transitions (repositioning, bracing, circling), so the pacing breathes instead of staying flat. Never fill any span with slow motion, stillness, or lingering gazes unless the request explicitly demands them, and keep the final second mid-motion. If a hand-off state (e.g. "上一段结束于" / "End of segment") is provided, open at exactly that state; if an end-state line ("段末") is provided, land on it at the final second and keep the camera state continuous throughout.
+
 > The basic formats for shots, camera movement, speakers, dialogue, and ordinary sound are shared with the Video Prompt Writing Guide (T2VA / I2VA / FL2VA / L2VA). This guide focuses on the reference labels, analysis sections, and format differences specific to full-reference mode.
 
 ## 1. Overall Structure
