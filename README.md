@@ -19,6 +19,7 @@ ComfyUI 自定义节点包：用本地多模态 GGUF 模型（llama.cpp）、Dee
 | `Universal Prompt Enhancer (Local GGUF)` | 模型无关的通用版：不含 H3 视频模式推导，skill 下拉框选哪个 skill 就用哪套规则（自带 `krea2-prompt-writing`，面向 Krea 2 文生图）。支持 Autogrow 多参考图（按序对应 `<Picture 1..N>`）、`history_entry` 回放，默认生成完自动卸载模型。`prompt` 留空但接了参考图时，自动改为从图片反推意图写提示词。`lora_profile` 下拉选择 LoRA 档案后，增强器围绕档案中已验证的特征改写，不再发明与 LoRA 冲突的风格/外貌描述。 |
 | `Universal Image Interrogator (Local GGUF)` | 图片反推：skill 下拉选输出风格——`img2prompt-natural` 输出自然语言段落（Krea 2/FLUX 时代），`img2prompt-tags` 输出 booru tag 列表（SD1.5/Pony/SDXL 时代）。batch 逐帧反推并拼接结果，帧间自动清 KV 防串扰。可选 `custom_instruction` 对每帧施加引导（如“不要描述水印/logo/字幕”）。需要模型配 mmproj 视觉投影。 |
 | `Universal Image Interrogator (Cloud API)` | 云端 API 版图片反推：与本地版同一套 skill（`img2prompt-natural`/`img2prompt-tags`）、同一套 `custom_instruction` 引导、同一套逐帧反推拼接（每帧一次调用，结果间插空行分隔符，与本地版完全一致），改用多模态云端模型生成。图片输入必须选 vision 模型，选纯文本模型接图会直接报清晰错误。`history_entry` 可回放本地/云端的反推记录（不调 API）。 |
+| `Qwen Image 2.1 Prompt Enhancer (Cloud API)` | Qwen-Image 2.1 专用增强器（文生图/编辑双模式）：把粗略需求改写成 `TextEncodeQwenImage21` 可直接用的提示词，依据官方 PE-T2I/PE-I2I 提示词改写模型的 system prompt（skill `qwen-image21-prompt-writing`，官方原文存档 + 提炼规则，按模式路由只加载对应一份）。图片插槽 `image_1..N` 与 `TextEncodeQwenImage21` 的 `images.image_N` 同名同序（同一张图两边同号插槽各接一份），改写后按官方规则以 `<image1>`/`<image2>` 编址（单图自然指代不打标签）；`prompt` 留空时从接图反推编辑意图。`task_type=Auto` 时接了图→Edit、没图→T2I。提示词内不写分辨率/宽高比（由工作流的分辨率节点负责）；渲染文字用双引号逐字锁定。云端模型/密钥/`history_entry` 口径与 H3 Cloud 版一致。 |
 | `LoRA Profiler (Local GGUF)` | LoRA 体检：喂一张"挂 LoRA + 探针词"跑出的图，视觉模型提取该 LoRA 稳定产出的特征（`probe_type=character` 提取身份长相，`style` 提取风格质感），按 LoRA 名存入 `lora_contexts.json`，供 Universal Prompt Enhancer 的 `lora_profile` 选用。配好的体检工作流见用户 workflows 目录 `LoRA体检(krea2).json`，换 LoRA 跑一次即可建档。人物 LoRA 注意两点：探针词开头必须带角色名（这批 LoRA 靠名字激活，不带名字跑出的是底模，档案就是废的）；同时把角色名填进 `trigger` 输入，增强器会强制最终提示词以触发词开头。体检时确认 LoraLoader 和 Profiler 上选的是同一个 LoRA。 |
 
 ## 模型放置
@@ -50,9 +51,9 @@ GGUF 放 `models/LLM/`，视觉投影（文件名含 `mmproj` 的 gguf）和模�
 
 ## Skill
 
-skill 放在包内 `skills/` 下（一个 skill 一个文件夹，含 `SKILL.md` + 可选 `references/`），启动后出现在节点的 skill 下拉框。自带 `h3-prompt-writing`（来自 [MiniMax-H3](https://github.com/MiniMax-AI/MiniMax-H3/tree/main/skills)）和 `krea2-prompt-writing`（依据 [Krea 2 官方 prompting 指南](https://github.com/krea-ai/krea-2/blob/main/docs/prompting.md) 编写，references 含官方示例与 expansion 规则）。
+skill 放在包内 `skills/` 下（一个 skill 一个文件夹，含 `SKILL.md` + 可选 `references/`），启动后出现在节点的 skill 下拉框。自带 `h3-prompt-writing`（来自 [MiniMax-H3](https://github.com/MiniMax-AI/MiniMax-H3/tree/main/skills)）、`krea2-prompt-writing`（依据 [Krea 2 官方 prompting 指南](https://github.com/krea-ai/krea-2/blob/main/docs/prompting.md) 编写，references 含官方示例与 expansion 规则）和 `qwen-image21-prompt-writing`（面向 Qwen-Image-2.1 文生图/编辑，references 为官方 PE-T2I/PE-I2I 提示词改写模型 system prompt 的原文存档——即 Qwen-Image-2.1 README 推荐的官方“怎么写提示词”口径）。
 
-路由规则按 skill 官方约定：T2VA/I2VA/FL2VA/L2VA 读 `references/base-en.txt`，Ref2VA 读 `references/ref-en.txt`；其他布局（如 krea2）的 skill 读取 `references/` 下全部 `.txt`/`.md` 文件。
+路由规则按 skill 官方约定：T2VA/I2VA/FL2VA/L2VA 读 `references/base-en.txt`，Ref2VA 读 `references/ref-en.txt`；否则模式名小写匹配的 `references/{mode}-en.txt` 存在时只读它（qwen-image21-prompt-writing：T2I→`t2i-en.txt`、Edit→`edit-en.txt`）；都没有（如 krea2）则读取 `references/` 下全部 `.txt`/`.md` 文件。
 
 ## 配置
 
@@ -75,9 +76,9 @@ DeepSeek API key 写在 `config.json`（见 `config.example.json`）或节点的
 
 云端节点不受这些影响（图片编码固定 768 长边，API 按图像 token 计费）。
 
-## 云端 API 节点（Cloud API 四件套）
+## 云端 API 节点（Cloud API 五件套）
 
-四个云端节点（增强器/灵感生成/翻译/图片反推）共用一个 `model` 下拉，选项为 `provider/model` 形式的 OpenAI 兼容端点组合：
+五个云端节点（H3 增强器/灵感生成/翻译/图片反推、Qwen-Image 2.1 增强器）共用一个 `model` 下拉，选项为 `provider/model` 形式的 OpenAI 兼容端点组合：
 
 | provider | 端点 | 内置模型 | API key 环境变量 |
 | --- | --- | --- | --- |

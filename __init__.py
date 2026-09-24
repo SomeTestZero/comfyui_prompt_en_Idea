@@ -10,6 +10,7 @@ from .nodes_cloud import (
 )
 from .nodes_idea import H3IdeaGeneratorLocal, H3SegmentBeatPicker
 from .nodes_local import H3LLMUnload, H3PromptEnhancerLocal, H3TranslatorLocal
+from .nodes_qwen21 import QwenImage21PromptEnhancerCloud
 from .nodes_interrogate import UniversalImageInterrogatorLocal
 from .nodes_profiler import LoraProfilerLocal
 from .nodes_scail2 import SCAIL2PromptGenerator, SCAIL2SegmentPlan
@@ -36,6 +37,7 @@ class H3PromptEnhancerExtension(ComfyExtension):
             H3PromptEnhancerCloud,
             H3IdeaGeneratorCloud,
             H3TranslatorCloud,
+            QwenImage21PromptEnhancerCloud,
             UniversalImageInterrogatorCloud,
             SCAIL2SegmentPlan,
             SCAIL2PromptGenerator,

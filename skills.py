@@ -28,8 +28,10 @@ def load_skill(name, mode):
     """Return (skill_body, [(ref_name, ref_text), ...]) for the given generation mode.
 
     Follows the h3-prompt-writing routing rule: base modes read base-en.txt,
-    Ref2VA reads ref-en.txt. Skills with a different references layout get all
-    their reference files.
+    Ref2VA reads ref-en.txt. A guide keyed to the mode name ({mode}-en.txt
+    lowercased, e.g. t2i-en.txt / edit-en.txt for qwen-image21-prompt-writing)
+    wins next; skills with a different references layout get all their
+    reference files.
     """
     skill_dir = _safe_path(SKILLS_DIR, name)
     skill_path = os.path.join(skill_dir, "SKILL.md")
@@ -43,10 +45,13 @@ def load_skill(name, mode):
     if os.path.isdir(refs_dir):
         base = os.path.join(refs_dir, "base-en.txt")
         ref = os.path.join(refs_dir, "ref-en.txt")
+        keyed = os.path.join(refs_dir, f"{mode.lower()}-en.txt")
         if mode in BASE_MODES and os.path.isfile(base):
             chosen = [base]
         elif mode == "Ref2VA" and os.path.isfile(ref):
             chosen = [ref]
+        elif os.path.isfile(keyed):
+            chosen = [keyed]
         else:
             chosen = [
                 os.path.join(refs_dir, n)
