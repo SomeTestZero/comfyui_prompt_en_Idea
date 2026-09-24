@@ -188,6 +188,17 @@ def test_qwen21_node():
         assert "rice-paper texture" in c["system"]
         assert "Insert it VERBATIM" in c["system"]
         assert len(calls) == 5
+        # style_preset: built-in block pins the same way, free box ignored
+        out = node.execute(prompt="a swordswoman", task_type="CharacterSheet",
+                           skill="qwen-image21-prompt-writing",
+                           model="volcengine-plan/glm-5.3-flash", thinking="disabled",
+                           temperature=0.7, seed=6, style_preset="anime cel",
+                           style_profile="ignored when a named preset is active")
+        assert out.result == ("prompt6",)
+        c = calls[5]
+        assert "Japanese anime cel-shaded illustration" in c["system"]
+        assert "ignored when a named preset" not in c["system"]
+        assert len(calls) == 6
     finally:
         nodes_qwen21.chat, common.HISTORY_PATH = old_chat, old_path
         os.unlink(hist)

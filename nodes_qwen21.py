@@ -39,12 +39,58 @@ RGBA_BACKGROUND_NOTE = (
     "alpha channel and the background is transparent.`"
 )
 
+# Pinned style blocks, selectable on the node. Byte-stable literals: the same words
+# land in every prompt of a set, so the set stays stylistically uniform.
+STYLE_PRESETS = {
+    "photoreal game CG": (
+        "photorealistic game cinematic CG, physically based leather, metal and fabric materials, natural "
+        "skin with real pores and fine hair, restrained colour grading, soft directional key light"
+    ),
+    "cinematic film": (
+        "cinematic live-action film still, anamorphic lens character, shallow depth of field, "
+        "naturalistic colour grading, dramatic motivated lighting"
+    ),
+    "anime cel": (
+        "Japanese anime cel-shaded illustration, clean confident linework, flat colour with two-tone "
+        "shading, vivid palette, crisp highlights"
+    ),
+    "manga ink": (
+        "manga ink drawing, bold black linework, screentone shading, high-contrast black and white, "
+        "dynamic composition"
+    ),
+    "watercolor": (
+        "traditional watercolor painting, translucent washes, visible pigment granulation and paper "
+        "tooth, soft edges, airy white space"
+    ),
+    "oil painting": (
+        "classical oil painting, visible brushstrokes, canvas texture, rich glazes, chiaroscuro lighting"
+    ),
+    "flat vector": (
+        "flat vector illustration, clean geometric shapes, even solid colours, minimal shading, bold "
+        "silhouette"
+    ),
+    "wuxia ink-wash": (
+        "wuxia xianxia fantasy, ethereal ink-wash aesthetic fused with photorealistic detail, luminous "
+        "misty atmosphere, muted jade and silver palette with soft crimson accents, silk and gauze "
+        "textures, painterly clouds"
+    ),
+}
 
-def build_style_note(style_profile):
-    """Pinned style block, copied into the final prompt byte-identical across runs:
-    a rewriting model left free would paraphrase the style words and every image
-    drifts. The block also owns the medium, so no competing style word is invented."""
-    style = style_profile.strip()
+
+def resolve_style_block(style_preset, style_profile):
+    """A named preset wins; otherwise the free-text box applies (custom, and none
+    left lenient so a filled box still pins without flipping the combo)."""
+    if style_preset in STYLE_PRESETS:
+        return STYLE_PRESETS[style_preset]
+    return style_profile.strip()
+
+
+def build_style_note(style_preset, style_profile):
+    """The pinned style block is copied into the final prompt byte-identical across
+    runs: a rewriting model left free would paraphrase the style words and every
+    image drifts. The block also owns the medium, so no competing style word is
+    invented."""
+    style = resolve_style_block(style_preset, style_profile)
     if not style:
         return ""
     return (
@@ -111,6 +157,7 @@ class QwenImage21PromptEnhancerCloud(io.ComfyNode):
             description="Rewrite a rough request into a Qwen-Image-2.1 prompt (text-to-image, instruction editing, or character reference sheet) with a multimodal cloud model, guided by the installed skill (qwen-image21-prompt-writing archives the official PE-T2I / PE-I2I prompt-rewriting system prompts plus a character-sheet composition guide). image_N sockets map to TextEncodeQwenImage21's same-numbered slots and the prompt addresses them as <image1>, <image2>, ... Needs a vision model when images are connected. Supports history_entry replay across both backends.",
             inputs=[
                 io.String.Input("prompt", multiline=True, default=""),
+                io.Combo.Input("style_preset", options=["none", "custom"] + list(STYLE_PRESETS), default="none", tooltip="Pinned style block: a named preset pins its built-in style words verbatim into every prompt of the set (byte-identical across runs -> uniform art style). custom = write your own in style_profile; none = off (a filled style_profile box still applies). A named preset ignores style_profile."),
                 io.String.Input("style_profile", multiline=True, default="", optional=True, tooltip="Pinned style block shared by a whole image set: inserted into every rewritten prompt verbatim (never paraphrased), so all outputs carry byte-identical style words. Write it in the output language (English for T2I/CharacterSheet descriptions)."),
                 io.Combo.Input("task_type", options=["Auto", "T2I", "Edit", "CharacterSheet"], default="Auto", tooltip="Auto: any image socket connected -> Edit, none -> T2I. The edit prompt register (instruction anchored on the input image(s)) fits any run with conditioning images, including reference-driven scene composition. CharacterSheet: build a multi-view character reference sheet (人设图/turnaround: front/side/back elevations + facial close-up, text-free on a flat solid backdrop) from scratch or from attached reference image(s) — identity anchored to the images when present."),
                 io.Combo.Input("background", options=["Auto", "Transparent"], default="Auto", tooltip="Auto: normal backdrop (CharacterSheet mode auto-picks a solid colour that contrasts the character's colouring). Transparent: RGBA output — the prompt wraps in the official transparency wording and describes no backdrop."),
@@ -139,7 +186,7 @@ class QwenImage21PromptEnhancerCloud(io.ComfyNode):
     @classmethod
     def execute(cls, prompt, task_type, skill, model, thinking, temperature, seed,
                 reasoning_effort="low", images=None, history_entry="none", api_key="",
-                background="Auto", style_profile=""):
+                background="Auto", style_preset="none", style_profile=""):
         if history_entry != "none":
             e = find_history_entry(history_entry)
             if e is None:
@@ -160,7 +207,7 @@ class QwenImage21PromptEnhancerCloud(io.ComfyNode):
             mode=mode,
             image_note=image_note,
             background_note=RGBA_BACKGROUND_NOTE if background == "Transparent" else "",
-            style_note=build_style_note(style_profile),
+            style_note=build_style_note(style_preset, style_profile),
             skill_body=skill_body,
             ref_names=" + ".join(n for n, _ in refs) or "none",
             ref_text="\n\n".join(t for _, t in refs),
