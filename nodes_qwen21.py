@@ -23,13 +23,21 @@ Rules:
 - Task mode: {mode}. Follow the guide's register and structure for this mode exactly.
 - The guide's JSON envelope (rewritten_prompt / wh_ratio / ratio_follow) does not apply here: output the rewritten prompt text itself, one continuous paragraph, and ignore the JSON fields. Everything the guide says about the content and formatting of rewritten_prompt still applies.
 - Resolution and aspect ratio are set by separate workflow nodes: never mention resolution, aspect ratio, or pixel counts in the prompt.
-- Output ONLY the final prompt. No explanations, no commentary, no markdown fences.{image_note}
+- Output ONLY the final prompt. No explanations, no commentary, no markdown fences.{image_note}{background_note}
 
 === SKILL ===
 {skill_body}
 
 === OFFICIAL PROMPT REWRITING GUIDE: {ref_names} ===
 {ref_text}"""
+
+# background=Transparent: the official RGBA wrapper is applied to the whole
+# description and no backdrop is described (native transparent output).
+RGBA_BACKGROUND_NOTE = (
+    "\n- Background: transparent. Describe no backdrop of any kind, and wrap the ENTIRE description in the "
+    "official RGBA wording verbatim: `This is an RGBA image with transparency. <description>. The image has "
+    "alpha channel and the background is transparent.`"
+)
 
 
 def derive_mode(task_type, frames):
@@ -88,6 +96,7 @@ class QwenImage21PromptEnhancerCloud(io.ComfyNode):
             inputs=[
                 io.String.Input("prompt", multiline=True, default=""),
                 io.Combo.Input("task_type", options=["Auto", "T2I", "Edit", "CharacterSheet"], default="Auto", tooltip="Auto: any image socket connected -> Edit, none -> T2I. The edit prompt register (instruction anchored on the input image(s)) fits any run with conditioning images, including reference-driven scene composition. CharacterSheet: build a multi-view character reference sheet (人设图/turnaround: front/side/back elevations + facial close-up, text-free on a flat solid backdrop) from scratch or from attached reference image(s) — identity anchored to the images when present."),
+                io.Combo.Input("background", options=["Auto", "Transparent"], default="Auto", tooltip="Auto: normal backdrop (CharacterSheet mode auto-picks a solid colour that contrasts the character's colouring). Transparent: RGBA output — the prompt wraps in the official transparency wording and describes no backdrop."),
                 io.Combo.Input("skill", options=skills, default=default_skill, tooltip="qwen-image21-prompt-writing = official Qwen-Image-2.1 prompt-rewriting guides (PE-T2I for text-to-image, PE-I2I for editing), routed by task mode."),
                 model_combo(),
                 io.Combo.Input("thinking", options=["disabled", "enabled"], default="disabled", advanced=True, tooltip="Deep-thinking switch (thinking.type). Doubao Seed and DeepSeek honor it; GLM models always think and ignore this - reasoning_effort controls their depth."),
@@ -112,7 +121,8 @@ class QwenImage21PromptEnhancerCloud(io.ComfyNode):
 
     @classmethod
     def execute(cls, prompt, task_type, skill, model, thinking, temperature, seed,
-                reasoning_effort="low", images=None, history_entry="none", api_key=""):
+                reasoning_effort="low", images=None, history_entry="none", api_key="",
+                background="Auto"):
         if history_entry != "none":
             e = find_history_entry(history_entry)
             if e is None:
@@ -132,6 +142,7 @@ class QwenImage21PromptEnhancerCloud(io.ComfyNode):
         system = QWEN21_SYSTEM.format(
             mode=mode,
             image_note=image_note,
+            background_note=RGBA_BACKGROUND_NOTE if background == "Transparent" else "",
             skill_body=skill_body,
             ref_names=" + ".join(n for n, _ in refs) or "none",
             ref_text="\n\n".join(t for _, t in refs),

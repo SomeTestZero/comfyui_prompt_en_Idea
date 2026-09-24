@@ -164,7 +164,18 @@ def test_qwen21_node():
         assert "one-inventory rule" in c["system"]
         assert "clarifying image editing instructions" not in c["system"]
         assert "one long English paragraph" not in c["system"]
+        assert "Background: transparent." not in c["system"]
         assert len(calls) == 3
+        # background=Transparent -> official RGBA wrap, no backdrop
+        out = node.execute(prompt="a white-haired swordswoman", task_type="CharacterSheet",
+                           skill="qwen-image21-prompt-writing",
+                           model="volcengine-plan/glm-5.3-flash", thinking="disabled",
+                           temperature=0.7, seed=4, background="Transparent")
+        assert out.result == ("prompt4",)
+        c = calls[3]
+        assert "This is an RGBA image with transparency." in c["system"]
+        assert "Background: transparent." in c["system"]
+        assert len(calls) == 4
     finally:
         nodes_qwen21.chat, common.HISTORY_PATH = old_chat, old_path
         os.unlink(hist)
