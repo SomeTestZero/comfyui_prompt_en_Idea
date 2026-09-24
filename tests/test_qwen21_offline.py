@@ -165,6 +165,7 @@ def test_qwen21_node():
         assert "clarifying image editing instructions" not in c["system"]
         assert "one long English paragraph" not in c["system"]
         assert "Background: transparent." not in c["system"]
+        assert "Style profile" not in c["system"]
         assert len(calls) == 3
         # background=Transparent -> official RGBA wrap, no backdrop
         out = node.execute(prompt="a white-haired swordswoman", task_type="CharacterSheet",
@@ -176,6 +177,17 @@ def test_qwen21_node():
         assert "This is an RGBA image with transparency." in c["system"]
         assert "Background: transparent." in c["system"]
         assert len(calls) == 4
+        # style_profile: pinned block goes in verbatim and owns the medium
+        out = node.execute(prompt="a swordswoman", task_type="CharacterSheet",
+                           skill="qwen-image21-prompt-writing",
+                           model="volcengine-plan/glm-5.3-flash", thinking="disabled",
+                           temperature=0.7, seed=5,
+                           style_profile="wuxia ink-wash painting, muted monochrome palette, rice-paper texture")
+        assert out.result == ("prompt5",)
+        c = calls[4]
+        assert "rice-paper texture" in c["system"]
+        assert "Insert it VERBATIM" in c["system"]
+        assert len(calls) == 5
     finally:
         nodes_qwen21.chat, common.HISTORY_PATH = old_chat, old_path
         os.unlink(hist)

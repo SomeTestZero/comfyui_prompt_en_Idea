@@ -52,8 +52,9 @@ out as ⟨panels⟩ against a solid ⟨colour⟩ backdrop.`
 
 Name the rendering medium the user asked for; when none is given, default to
 photorealistic game cinematic CG with physically based leather and fabric, natural
-skin, restrained colour grading. Name the style word once here; echo it only in the
-closing sentence.
+skin, restrained colour grading. When the run pins a style profile (a fixed style
+block), its words define the style and medium — echo nothing that competes with
+them. Name the style word once here; echo it only in the closing sentence.
 
 ## Step 4 — The one-inventory rule
 
@@ -133,7 +134,10 @@ Multiple images: <image1> is the appearance source unless the user says otherwis
 (e.g. outfit from <image2>); address them with the tags in slot order. A single
 image is referred to naturally ("the reference image") without a tag. A reference
 that is itself a sheet or multi-view still serves only as the appearance source —
-the output sheet follows the layout rules above.
+the output sheet follows the layout rules above. When the user designates one image
+as a STYLE reference ("draw in the style of <image2>"), read the rendering style,
+medium, and palette from that image and say the sheet is rendered to match it —
+never copy its subject matter into the sheet.
 
 ## Shape of the output
 
