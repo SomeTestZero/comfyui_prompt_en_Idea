@@ -192,7 +192,7 @@ def test_qwen21_node():
         out = node.execute(prompt="a swordswoman", task_type="CharacterSheet",
                            skill="qwen-image21-prompt-writing",
                            model="volcengine-plan/glm-5.3-flash", thinking="disabled",
-                           temperature=0.7, seed=6, style_preset="anime cel",
+                           temperature=0.7, seed=6, style_preset="日漫赛璐璐",
                            style_profile="ignored when a named preset is active")
         assert out.result == ("prompt6",)
         c = calls[5]
