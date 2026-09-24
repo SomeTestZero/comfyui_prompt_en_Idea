@@ -33,7 +33,9 @@ Rules:
 
 
 def derive_mode(task_type, frames):
-    """Auto: any image connected -> Edit (the edit prompt register), else T2I."""
+    """Auto: any image connected -> Edit (the edit prompt register), else T2I.
+    Explicit modes pass through untouched — CharacterSheet stays CharacterSheet
+    with or without images (the sheet guide handles both cases)."""
     if task_type == "Auto":
         return "Edit" if frames else "T2I"
     return task_type
@@ -82,10 +84,10 @@ class QwenImage21PromptEnhancerCloud(io.ComfyNode):
             node_id="QwenImage21PromptEnhancerCloud",
             display_name="Qwen Image 2.1 Prompt Enhancer (Cloud API)",
             category="prompt",
-            description="Rewrite a rough request into a Qwen-Image-2.1 prompt (text-to-image or instruction editing) with a multimodal cloud model, guided by the installed skill (qwen-image21-prompt-writing archives the official PE-T2I / PE-I2I prompt-rewriting system prompts). image_N sockets map to TextEncodeQwenImage21's same-numbered slots and the prompt addresses them as <image1>, <image2>, ... Needs a vision model when images are connected. Supports history_entry replay across both backends.",
+            description="Rewrite a rough request into a Qwen-Image-2.1 prompt (text-to-image, instruction editing, or character reference sheet) with a multimodal cloud model, guided by the installed skill (qwen-image21-prompt-writing archives the official PE-T2I / PE-I2I prompt-rewriting system prompts plus a character-sheet composition guide). image_N sockets map to TextEncodeQwenImage21's same-numbered slots and the prompt addresses them as <image1>, <image2>, ... Needs a vision model when images are connected. Supports history_entry replay across both backends.",
             inputs=[
                 io.String.Input("prompt", multiline=True, default=""),
-                io.Combo.Input("task_type", options=["Auto", "T2I", "Edit"], default="Auto", tooltip="Auto: any image socket connected -> Edit, none -> T2I. The edit prompt register (instruction anchored on the input image(s)) fits any run with conditioning images, including reference-driven scene composition."),
+                io.Combo.Input("task_type", options=["Auto", "T2I", "Edit", "CharacterSheet"], default="Auto", tooltip="Auto: any image socket connected -> Edit, none -> T2I. The edit prompt register (instruction anchored on the input image(s)) fits any run with conditioning images, including reference-driven scene composition. CharacterSheet: build a multi-view character reference sheet (人设图/turnaround: front/side/back elevations + facial close-up, literal labels) from scratch or from attached reference image(s) — identity anchored to the images when present."),
                 io.Combo.Input("skill", options=skills, default=default_skill, tooltip="qwen-image21-prompt-writing = official Qwen-Image-2.1 prompt-rewriting guides (PE-T2I for text-to-image, PE-I2I for editing), routed by task mode."),
                 model_combo(),
                 io.Combo.Input("thinking", options=["disabled", "enabled"], default="disabled", advanced=True, tooltip="Deep-thinking switch (thinking.type). Doubao Seed and DeepSeek honor it; GLM models always think and ignore this - reasoning_effort controls their depth."),

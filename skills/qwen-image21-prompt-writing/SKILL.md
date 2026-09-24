@@ -1,6 +1,6 @@
 ---
 name: qwen-image21-prompt-writing
-description: Rewrite a rough request into a Qwen-Image-2.1 prompt for text-to-image (T2I) or instruction-based image editing (Edit). Use when writing prompts for TextEncodeQwenImage21, addressing multi-image inputs as <image1>/<image2>, committing quoted rendered text and typography, RGBA transparent output, or reference-driven scene composition.
+description: Rewrite a rough request into a Qwen-Image-2.1 prompt for text-to-image (T2I), instruction-based image editing (Edit), or a character reference sheet (CharacterSheet: multi-view turnaround with literal labels). Use when writing prompts for TextEncodeQwenImage21, addressing multi-image inputs as <image1>/<image2>, committing quoted rendered text and typography, RGBA transparent output, reference-driven scene composition, or 人设图 / model sheets.
 ---
 
 # Qwen-Image 2.1 Prompt Writing
@@ -9,6 +9,7 @@ One model serves both text-to-image and instruction editing; the register differ
 
 - **T2I** → `references/t2i-en.txt` — the official PE-T2I system prompt ("Image Prompt Rewriting Expert"): an observer's description of the finished frame in eight ordered steps (read the brief → fix the frame → opening sentence → inventory → walk the frame → set every text string → lighting → closing sentence).
 - **Edit** → `references/edit-en.txt` — the official PE-I2I system prompt ("Edit Prompt Enhancer"): a precise editing directive anchored on the input image(s), governed by attribute disentanglement.
+- **CharacterSheet** → `references/charactersheet-en.txt` — the character reference sheet (人设图 / model sheet / turnaround) composition guide: one shared appearance inventory, panel-by-panel camera walk (front/side/back elevations + facial close-up), literal labels and title banner, orthographic discipline; with reference images, identity is anchored to the images instead of words.
 
 ## Hard rules
 
@@ -27,7 +28,8 @@ One model serves both text-to-image and instruction editing; the register differ
 
 - T2I: about twenty sentences / 400–500 words whether the brief was three words or three hundred (official PE-T2I size); a single quiet subject runs shorter, a dense poster with much text runs longer.
 - Edit: follow the PE-I2I intent branch — a local change ("this picture changed") stays a restrained directive that says exactly what changes; a "new picture of this subject" (photo shoot, poster, composite, infographic) is actively constructed to a professional standard, and elaboration scales with what was asked.
+- CharacterSheet: thirty-five to forty-five sentences / 550–700 words — appearance inventory once, then the panel walk; a three-panel sheet runs shorter.
 
 ## Reference
 
-`references/t2i-en.txt` and `references/edit-en.txt` are verbatim archives of the official system prompts shipped with [Qwen-Image-2.1-PE-T2I](https://huggingface.co/Qwen/Qwen-Image-2.1-PE-T2I) / [Qwen-Image-2.1-PE-I2I](https://huggingface.co/Qwen/Qwen-Image-2.1-PE-I2I) — the prompt-rewriting models the Qwen-Image-2.1 README recommends for best results. Their full rules, tables, and worked examples apply; where they conflict with this file on output shape, this file wins.
+`references/t2i-en.txt` and `references/edit-en.txt` are verbatim archives of the official system prompts shipped with [Qwen-Image-2.1-PE-T2I](https://huggingface.co/Qwen/Qwen-Image-2.1-PE-T2I) / [Qwen-Image-2.1-PE-I2I](https://huggingface.co/Qwen/Qwen-Image-2.1-PE-I2I) — the prompt-rewriting models the Qwen-Image-2.1 README recommends for best results. Their full rules, tables, and worked examples apply; where they conflict with this file on output shape, this file wins. `references/charactersheet-en.txt` is our own composition guide in the same register (character reference sheets are a layout class the official pair does not cover), not an archive.

@@ -28,10 +28,14 @@ def test_skill_routing():
     _, refs = load_skill("qwen-image21-prompt-writing", "Edit")
     assert [n for n, _ in refs] == [os.path.join("references", "edit-en.txt")]
     assert "Edit Prompt Enhancer" in refs[0][1]
+    _, refs = load_skill("qwen-image21-prompt-writing", "CharacterSheet")
+    assert [n for n, _ in refs] == [os.path.join("references", "charactersheet-en.txt")]
+    assert "CHARACTER REFERENCE SHEET" in refs[0][1]
     # no keyed guide for the mode -> every reference file
     _, refs = load_skill("qwen-image21-prompt-writing", "generic")
     assert {n for n, _ in refs} == {os.path.join("references", "t2i-en.txt"),
-                                    os.path.join("references", "edit-en.txt")}
+                                    os.path.join("references", "edit-en.txt"),
+                                    os.path.join("references", "charactersheet-en.txt")}
     # h3 routing unchanged (base-en.txt / ref-en.txt win over keyed lookup)
     _, refs = load_skill("h3-prompt-writing", "T2VA")
     assert [n for n, _ in refs] == [os.path.join("references", "base-en.txt")]
@@ -47,6 +51,8 @@ def test_mode_and_frames():
     assert derive_mode("Auto", ["f"]) == "Edit"
     assert derive_mode("T2I", ["f"]) == "T2I"
     assert derive_mode("Edit", []) == "Edit"
+    assert derive_mode("CharacterSheet", []) == "CharacterSheet"
+    assert derive_mode("CharacterSheet", ["f"]) == "CharacterSheet"
     frames = collect_frames({"image_10": ["c"], "image_2": ["b"], "image_1": ["a", "a2"]})
     assert frames == ["a", "a2", "b", "c"]  # slot order, not dict order
     assert collect_frames(None) == []
@@ -147,6 +153,18 @@ def test_qwen21_node():
         except ValueError as err:
             assert "no reference images" in str(err)
         assert len(calls) == 2
+        # character-sheet mode: sheet guide routes in, with or without images
+        out = node.execute(prompt="dante reference sheet", task_type="CharacterSheet",
+                           skill="qwen-image21-prompt-writing",
+                           model="volcengine-plan/glm-5.3-flash", thinking="disabled",
+                           temperature=0.7, seed=3)
+        assert out.result == ("prompt3",)
+        c = calls[2]
+        assert "Task mode: CharacterSheet." in c["system"]
+        assert "one-inventory rule" in c["system"]
+        assert "clarifying image editing instructions" not in c["system"]
+        assert "one long English paragraph" not in c["system"]
+        assert len(calls) == 3
     finally:
         nodes_qwen21.chat, common.HISTORY_PATH = old_chat, old_path
         os.unlink(hist)
