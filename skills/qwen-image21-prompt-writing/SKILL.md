@@ -9,7 +9,7 @@ One model serves both text-to-image and instruction editing; the register differ
 
 - **T2I** → `references/t2i-en.txt` — the official PE-T2I system prompt ("Image Prompt Rewriting Expert"): an observer's description of the finished frame in eight ordered steps (read the brief → fix the frame → opening sentence → inventory → walk the frame → set every text string → lighting → closing sentence).
 - **Edit** → `references/edit-en.txt` — the official PE-I2I system prompt ("Edit Prompt Enhancer"): a precise editing directive anchored on the input image(s), governed by attribute disentanglement.
-- **CharacterSheet** → `references/charactersheet-en.txt` — the character reference sheet (人设图 / model sheet / turnaround) composition guide: one shared appearance inventory, panel-by-panel camera walk (front/side/back elevations + facial close-up), literal labels and title banner, orthographic discipline; with reference images, identity is anchored to the images instead of words.
+- **CharacterSheet** → `references/charactersheet-en.txt` — the character reference sheet (人设图 / model sheet / turnaround) composition guide: one shared appearance inventory, panel-by-panel camera walk (front/side/back elevations + facial close-up), flat solid backdrop with nothing under the figures, no text on the sheet (title/labels only when the user explicitly asks), orthographic discipline; with reference images, identity is anchored to the images instead of words.
 
 ## Hard rules
 
@@ -28,7 +28,7 @@ One model serves both text-to-image and instruction editing; the register differ
 
 - T2I: about twenty sentences / 400–500 words whether the brief was three words or three hundred (official PE-T2I size); a single quiet subject runs shorter, a dense poster with much text runs longer.
 - Edit: follow the PE-I2I intent branch — a local change ("this picture changed") stays a restrained directive that says exactly what changes; a "new picture of this subject" (photo shoot, poster, composite, infographic) is actively constructed to a professional standard, and elaboration scales with what was asked.
-- CharacterSheet: thirty-five to forty-five sentences / 550–700 words — appearance inventory once, then the panel walk; a three-panel sheet runs shorter.
+- CharacterSheet: thirty to forty sentences / 500–650 words — appearance inventory once, then the panel walk; a three-panel sheet runs shorter.
 
 ## Reference
 
