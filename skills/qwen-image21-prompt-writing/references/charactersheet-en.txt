@@ -32,8 +32,8 @@ three-hundred-word brief both become a sheet of the same size.
 
 Default sheet: one horizontal row of four panels on a shared backdrop, left to
 right — front view (full body facing the camera), side view (full body in strict 90°
-profile), back view (full body facing away), and a facial close-up (a tight bust
- crop filling its panel). The panels are separated by empty space alone: no
+profile), back view (full body facing away), and a facial close-up (an extreme
+close-up of the face filling its panel). The panels are separated by empty space alone: no
 frames, borders, gutters, dividers, captions, or labels. Deviate only when the user
 asks: three panels without the close-up, expression sheet, pose sheet, outfit-
 variants sheet, an added three-quarter view.
@@ -82,12 +82,14 @@ profile and back stay geometrically clean. The body's rotation is the ONLY diffe
 between them; the stance is the same relaxed neutral stance, arms slightly away from
 the body so the coat silhouette reads, both feet planted on the ground.
 
-The close-up: a tight bust crop framed from just above the hair down to the UPPER
-CHEST at most — the frame's bottom edge sits at the upper chest or higher (a
-neck-line crop is equally fine), so the head fills most of the panel, roughly two
-thirds of its height or more. This panel exists so other models can read the face;
-a waist-up crop wastes it. Direct gaze, face evenly lit, hair falling as in the
-inventory — camera and styling unchanged, only the framing tighter.
+The close-up: an extreme close-up of the face. The frame runs from just above the
+hair down to the collarbone and CUTS the body there — the panel holds only the
+head, the hair, and the neck down to that cut (a neck-line cut is equally fine):
+never a bust, waist, or full-figure crop, and "portrait" or "bust shot" framing is
+too wide here. The face and hair fill the whole panel — every inch of torso below
+the cut costs face pixels, and this panel exists so other models can read the face.
+Direct gaze, face evenly lit, hair falling as in the inventory — camera and
+styling unchanged, only the framing tighter.
 
 ## Step 6 — Text: none
 
@@ -152,5 +154,5 @@ English throughout; quoted strings keep their own script. CFG 1.0 means exclusio
 are written as statements of the desired state: "exactly one character appears in
 the sheet", "the three full-body panels differ only by the body's rotation",
 "nothing stands beneath the figures", "the backdrop is a flat solid colour whose
-value contrasts the character's", "the close-up frame ends at the upper chest with
-the head filling the panel".
+value contrasts the character's", "the close-up frame cuts at the collarbone with
+the face filling the panel".
