@@ -53,6 +53,11 @@ def test_mode_and_frames():
     assert derive_mode("Edit", []) == "Edit"
     assert derive_mode("CharacterSheet", []) == "CharacterSheet"
     assert derive_mode("CharacterSheet", ["f"]) == "CharacterSheet"
+    # Chinese dropdown labels map to the internal modes
+    assert derive_mode("自动", []) == "T2I"
+    assert derive_mode("自动", ["f"]) == "Edit"
+    assert derive_mode("人物卡", ["f"]) == "CharacterSheet"
+    assert derive_mode("文生图", ["f"]) == "T2I"
     frames = collect_frames({"image_10": ["c"], "image_2": ["b"], "image_1": ["a", "a2"]})
     assert frames == ["a", "a2", "b", "c"]  # slot order, not dict order
     assert collect_frames(None) == []
@@ -168,12 +173,13 @@ def test_qwen21_node():
         assert "Style profile" not in c["system"]
         assert len(calls) == 3
         # background=Transparent -> official RGBA wrap, no backdrop
-        out = node.execute(prompt="a white-haired swordswoman", task_type="CharacterSheet",
+        out = node.execute(prompt="a white-haired swordswoman", task_type="人物卡",
                            skill="qwen-image21-prompt-writing",
                            model="volcengine-plan/glm-5.3-flash", thinking="disabled",
-                           temperature=0.7, seed=4, background="Transparent")
+                           temperature=0.7, seed=4, background="透明背景")
         assert out.result == ("prompt4",)
         c = calls[3]
+        assert "Task mode: CharacterSheet." in c["system"]  # labels map back
         assert "This is an RGBA image with transparency." in c["system"]
         assert "Background: transparent." in c["system"]
         assert len(calls) == 4

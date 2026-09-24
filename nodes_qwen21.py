@@ -104,10 +104,18 @@ def build_style_note(style_preset, style_profile):
     )
 
 
+# Dropdown labels are Chinese for the user; the mapped values are the internal mode
+# strings that skill routing, system prompts, and history entries use. Legacy
+# English values pass through so saved workflows keep loading.
+TASK_TYPE_LABELS = {"自动": "Auto", "文生图": "T2I", "编辑": "Edit", "人物卡": "CharacterSheet"}
+BACKGROUND_LABELS = {"自动": "Auto", "透明背景": "Transparent"}
+
+
 def derive_mode(task_type, frames):
     """Auto: any image connected -> Edit (the edit prompt register), else T2I.
     Explicit modes pass through untouched — CharacterSheet stays CharacterSheet
     with or without images (the sheet guide handles both cases)."""
+    task_type = TASK_TYPE_LABELS.get(task_type, task_type)
     if task_type == "Auto":
         return "Edit" if frames else "T2I"
     return task_type
@@ -159,10 +167,10 @@ class QwenImage21PromptEnhancerCloud(io.ComfyNode):
             description="Rewrite a rough request into a Qwen-Image-2.1 prompt (text-to-image, instruction editing, or character reference sheet) with a multimodal cloud model, guided by the installed skill (qwen-image21-prompt-writing archives the official PE-T2I / PE-I2I prompt-rewriting system prompts plus a character-sheet composition guide). image_N sockets map to TextEncodeQwenImage21's same-numbered slots and the prompt addresses them as <image1>, <image2>, ... Needs a vision model when images are connected. Supports history_entry replay across both backends.",
             inputs=[
                 io.String.Input("prompt", multiline=True, default=""),
-                io.Combo.Input("style_preset", options=["无", "自定义"] + list(STYLE_PRESETS), default="无", tooltip="钉风格块：选具名预设就把它内置的风格词逐字钉进本套图每条提示词（跨次跑措辞完全一致 → 画风统一）。自定义 = 在 style_profile 框里写自己的风格块（英文）；无 = 不钉（但 style_profile 填了内容仍生效）。选了具名预设就忽略 style_profile。"),
-                io.String.Input("style_profile", multiline=True, default="", optional=True, tooltip="Pinned style block shared by a whole image set: inserted into every rewritten prompt verbatim (never paraphrased), so all outputs carry byte-identical style words. Write it in the output language (English for T2I/CharacterSheet descriptions)."),
-                io.Combo.Input("task_type", options=["Auto", "T2I", "Edit", "CharacterSheet"], default="Auto", tooltip="Auto: any image socket connected -> Edit, none -> T2I. The edit prompt register (instruction anchored on the input image(s)) fits any run with conditioning images, including reference-driven scene composition. CharacterSheet: build a multi-view character reference sheet (人设图/turnaround: front/side/back elevations + facial close-up, text-free on a flat solid backdrop) from scratch or from attached reference image(s) — identity anchored to the images when present."),
-                io.Combo.Input("background", options=["Auto", "Transparent"], default="Auto", tooltip="Auto: normal backdrop (CharacterSheet mode auto-picks a solid colour that contrasts the character's colouring). Transparent: RGBA output — the prompt wraps in the official transparency wording and describes no backdrop."),
+                io.Combo.Input("style_preset", display_name="风格预设", options=["无", "自定义"] + list(STYLE_PRESETS), default="无", tooltip="钉风格块：选具名预设就把它内置的风格词逐字钉进本套图每条提示词（跨次跑措辞完全一致 → 画风统一）。自定义 = 在风格块框里写自己的风格块（英文）；无 = 不钉（但风格块框填了内容仍生效）。选了具名预设就忽略风格块框。"),
+                io.String.Input("style_profile", display_name="风格块", multiline=True, default="", optional=True, tooltip="自己写的风格块（英文）：逐字钉进每条改写结果（不许被释义/改写），一套图共用同一段即画风统一。写成英文是因为提示词正文是英文；风格预设选了具名档时本框被忽略。"),
+                io.Combo.Input("task_type", display_name="任务类型", options=list(TASK_TYPE_LABELS), default="自动", tooltip="自动：接了图→编辑（Edit 语域）、没图→文生图（T2I 语域）。文生图/编辑：官方 PE-T2I/PE-I2I 改写语域。人物卡：多视图角色参考表（人设图/turnaround：正/侧/背 + 面部特写，纯色背景、默认无文字），有无参考图都可跑——有图时身份锚定图上不复述外观。"),
+                io.Combo.Input("background", display_name="背景", options=list(BACKGROUND_LABELS), default="自动", tooltip="自动：普通背景（人物卡模式自动选与人物主色反差的纯色底：浅人物深底、深人物浅底）。透明背景：RGBA 输出——提示词按官方透明措辞包裹、不写任何背景。"),
                 io.Combo.Input("skill", options=skills, default=default_skill, tooltip="qwen-image21-prompt-writing = official Qwen-Image-2.1 prompt-rewriting guides (PE-T2I for text-to-image, PE-I2I for editing), routed by task mode."),
                 model_combo(),
                 io.Combo.Input("thinking", options=["disabled", "enabled"], default="disabled", advanced=True, tooltip="Deep-thinking switch (thinking.type). Doubao Seed and DeepSeek honor it; GLM models always think and ignore this - reasoning_effort controls their depth."),
@@ -199,6 +207,7 @@ class QwenImage21PromptEnhancerCloud(io.ComfyNode):
         provider, model_id = parse_model_option(model)
         frames = collect_frames(images)
         mode = derive_mode(task_type, frames)
+        background = BACKGROUND_LABELS.get(background, background)
         require_vision(provider, model_id, frames)
         if not prompt.strip() and not frames:
             raise ValueError("prompt is empty and no reference images connected.")
