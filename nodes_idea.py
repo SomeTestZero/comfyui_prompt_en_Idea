@@ -8,6 +8,7 @@ from comfy_api.latest import io
 from .common import append_history, log, make_progress_cb
 from .llm_local import LocalLLM, local_options, tensor_to_base64_jpeg
 from .nodes_local import advanced_model_inputs, build_model_config, derive_mode, model_input, sampling_inputs
+from .categories import PROMPT_IDEA
 
 IDEA_SYSTEM = """You are a screenwriter for short AI-generated videos. Write a story draft from the user's request.
 
@@ -249,8 +250,8 @@ class H3IdeaGeneratorLocal(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="H3IdeaGeneratorLocal",
-            display_name="H3 Idea Generator (Local GGUF) 灵感生成",
-            category="prompt",
+            display_name="[yyp] H3 Idea Generator (Local GGUF) 灵感生成",
+            category=PROMPT_IDEA,
             description="Generate a short video story draft (setup + shot-by-shot beats) with a local GGUF model, to feed the H3 Prompt Enhancer's prompt input when you're out of inspiration. Wire the same keyframes/reference images as the enhancer and the story is written around them: a plot that travels from first to last frame, or one starring the reference subject. The seed always picks story ingredients and the model weaves them, so every seed gives a different but reproducible story; a hint outranks the drawn ingredients - it only fills what the hint leaves open (with images: only core event and mood are drawn, subject/setting come from the pictures). Explicit requirements from the hint (style, shot policy, ...) are restated in the draft's opening line with their English production terms, so the enhancer keeps them. The story is sized to the duration input and the draft is stamped with it, so the enhancer schedules shots within the runtime. Image input needs a *mmproj*.gguf next to the model.",
             inputs=[
                 io.String.Input("hint", multiline=True, default="", tooltip="Optional theme/clue to riff on - highest priority, everything it does not specify is filled from seed-picked ingredients, so a style-only hint like '3DCG' still gets a different subject/setting/event every seed (conflicting ingredients are dropped). No need to write the duration here, it has its own input."),
@@ -372,8 +373,8 @@ class H3SegmentBeatPicker(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="H3SegmentBeatPicker",
-            display_name="H3 Segment Beat Picker 长镜头节拍拾取",
-            category="prompt",
+            display_name="[yyp] H3 Segment Beat Picker 长镜头节拍拾取",
+            category=PROMPT_IDEA,
             description="Pick one segment's beat from a numbered beat sheet written by the H3 Idea Generator in long-take mode (segment_seconds + total_segments wired there). Outputs the shared setup plus this segment's beat, retimed to start at 0s and marked as a seamless continuation, ready for the H3 Prompt Enhancer. Manual chaining: set clip_index by hand before each run; looped chaining: wire the loop index + 1. No LLM call - pure text splitting.",
             inputs=[
                 io.String.Input("beat_sheet", multiline=True, default="", tooltip="The idea generator's draft in beat-sheet mode (labels 段1/段2/... or Segment 1/2/...). Linked input hides the box; widget kept so saved workflows round-trip."),

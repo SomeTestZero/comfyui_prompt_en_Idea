@@ -14,6 +14,7 @@ HISTORY_KEEP_ON_TRIM = 1500
 LOG_MAX_BYTES = 8 * 1024 * 1024
 LOG_KEEP_LINES = 2000
 LORA_PROFILES_PATH = os.path.join(NODE_DIR, "lora_contexts.json")
+LORA_PRESETS_PATH = os.path.join(NODE_DIR, "lora_presets.json")
 
 
 def log(msg):
@@ -112,6 +113,72 @@ def lora_profile_options():
     return ["none"] + sorted(read_lora_profiles())
 
 
+def read_lora_presets():
+    if os.path.exists(LORA_PRESETS_PATH):
+        try:
+            with open(LORA_PRESETS_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            log(f"lora presets read failed: {e}")
+    return {}
+
+
+LORA_PRESET_NONE = "不注入"
+
+
+def _no_preset(preset):
+    # Older saves may still carry the English "none" sentinel from the first build.
+    return preset in ("", "none", None, LORA_PRESET_NONE)
+
+
+def lora_preset_options():
+    """[不注入] + presets in file order, so the dropdown reads top-down by purpose."""
+    return [LORA_PRESET_NONE] + list(read_lora_presets())
+
+
+def build_preset_note(preset):
+    """Instruction bullet for a LoRA preset; '' when none.
+
+    Presets live in lora_presets.json, not in skills/: the official skill files
+    stay byte-identical to MiniMax-H3 while LoRA specifics plug in here.
+    """
+    if _no_preset(preset):
+        return ""
+    p = read_lora_presets().get(preset)
+    if p is None:
+        raise ValueError(f"LoRA preset not found (list may be stale, reselect it): {preset}")
+    note = f"\n- This generation runs with the LoRA preset \"{preset}\" active. {p.get('guidance', '').strip()}".rstrip()
+    triggers = p.get("triggers") or []
+    if triggers:
+        note += ("\n- Activation phrases must survive verbatim in the final prompt, exact spelling and punctuation, "
+                 "never translated or reworded: " + ", ".join(triggers) +
+                 ". Put them in one short cue line at the end of detailed_description (e.g. \"Motion cues: ...\").")
+    return note
+
+
+def apply_preset_triggers(text, preset):
+    """Guarantee the activation phrases are present; returns (text, added_phrases).
+
+    The rewrite normally includes them already; this is the safety net for
+    models that drop rare tokens. Cue line goes before the sound sections.
+    """
+    if _no_preset(preset):
+        return text, []
+    p = read_lora_presets().get(preset)
+    if p is None:
+        return text, []
+    lowered = text.lower()
+    missing = [t for t in (p.get("triggers") or []) if t.strip().lower() not in lowered]
+    if not missing:
+        return text, []
+    line = "Motion cues: " + ", ".join(missing) + "."
+    for marker in ("\noverall_soundscape:", "\nnon_diegetic_music:"):
+        i = text.find(marker)
+        if i != -1:
+            return text[:i].rstrip() + "\n" + line + "\n" + text[i:], missing
+    return text.rstrip() + "\n" + line, missing
+
+
 def load_config():
     cfg = {"api_key": "", "base_url": "https://api.deepseek.com"}
     if os.path.exists(CONFIG_PATH):
@@ -207,8 +274,10 @@ def call_chat_completions(cfg, key, model, system, user_text, temperature, on_te
     if "reasoner" not in model:
         payload["temperature"] = temperature
 
-    url = cfg["base_url"].rstrip("/") + "/chat/completions"
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    # OAuth providers pass a ready header set (and possibly a different path);
+    # everything else keeps the plain bearer-token shape.
+    url = cfg["base_url"].rstrip("/") + cfg.get("chat_path", "/chat/completions")
+    headers = cfg.get("headers") or {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     last_err = None
     for attempt in range(1, REQUEST_RETRIES + 2):
         try:

@@ -20,6 +20,10 @@
     },
     "volcengine-coding": {
       "api_key": "your-coding-plan-key-here"
+    },
+    "workbuddy": {
+      "_note": "No api_key: the node reads the pi CLI login (~/.pi/agent/auth.json) and refreshes the OAuth token itself. Run `/login workbuddy` in pi once.",
+      "credential_path": "~/.pi/agent/auth.json"
     }
   }
 }

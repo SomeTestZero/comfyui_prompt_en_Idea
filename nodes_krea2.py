@@ -22,10 +22,12 @@ from .nodes_cloud import (
 from .nodes_qwen21 import STYLE_PRESETS, build_style_note, collect_frames
 from .nodes_universal import build_lora_note
 from .skills import load_skill, scan_skills
+from .categories import PROMPT_ENHANCE
 
 KREA2_SYSTEM = """You are a professional prompt engineer for the Krea 2 text-to-image model (RAW and Turbo). Rewrite the user's request into a final Krea-2 prompt that strictly follows the installed skill and the official prompting guide below.
 
 Rules:
+- Task mode: {mode}. Follow the guide's register and structure for this mode exactly.
 - Output ONLY the final prompt: exactly one English paragraph. No explanations, no commentary, no markdown fences.
 - The attached reference images guide the description only — Krea 2 generation takes text alone. Ground style, palette, and subject details in what is visibly in them; never invent appearance details.{image_note}{style_note}{lora_note}
 
@@ -34,6 +36,12 @@ Rules:
 
 === OFFICIAL KREA 2 PROMPTING GUIDE: {ref_names} ===
 {ref_text}"""
+
+
+# Dropdown labels are Chinese for the user; the mapped values are the internal mode
+# strings that skill routing, the system prompt, and history entries use. Legacy
+# English values pass through so saved workflows keep loading.
+TASK_TYPE_LABELS = {"文生图": "T2I", "人物卡": "CharacterSheet"}
 
 
 def build_user_text(prompt, frames):
@@ -66,11 +74,12 @@ class Krea2PromptEnhancerCloud(io.ComfyNode):
         default_skill = "krea2-prompt-writing" if "krea2-prompt-writing" in skills else skills[0]
         return io.Schema(
             node_id="Krea2PromptEnhancerCloud",
-            display_name="Krea 2 Prompt Enhancer (Cloud API)",
-            category="prompt",
-            description="Rewrite a rough request into a Krea 2 (RAW/Turbo) text-to-image prompt with a multimodal cloud model, guided by the installed skill (krea2-prompt-writing archives the official Krea 2 prompting guidelines and Krea's own expansion system prompt). Reference images ground the description only — Krea 2 generation is text-only. style_preset/style_profile pin a byte-stable style block across a set; lora_profile injects a LoRA Profiler profile and its trigger words. Supports history_entry replay across both backends.",
+            display_name="[yyp] Krea 2 Prompt Enhancer (Cloud API)",
+            category=PROMPT_ENHANCE,
+            description="Rewrite a rough request into a Krea 2 (RAW/Turbo) text-to-image prompt (plain scene or character reference sheet) with a multimodal cloud model, guided by the installed skill (krea2-prompt-writing archives the official Krea 2 prompting guidelines and Krea's own expansion system prompt; CharacterSheet mode routes a character-sheet composition guide). Reference images ground the description only — Krea 2 generation is text-only. style_preset/style_profile pin a byte-stable style block across a set; lora_profile injects a LoRA Profiler profile and its trigger words. Supports history_entry replay across both backends.",
             inputs=[
                 io.String.Input("prompt", multiline=True, default=""),
+                io.Combo.Input("task_type", display_name="任务类型", options=list(TASK_TYPE_LABELS), default="文生图", tooltip="文生图：普通场景提示词。人物卡：多视图角色参考表（人设图/turnaround：正/侧/背 + 面部特写，纯色反差背景、默认无文字），有无参考图都可跑——接图时外观从图上读出写成文字（Krea 2 生成纯文本，提示词里不提参考图）。"),
                 io.Combo.Input("style_preset", display_name="风格预设", options=["无", "自定义"] + list(STYLE_PRESETS), default="无", tooltip="钉风格块：选具名预设就把它内置的风格词逐字钉进本套图每条提示词（跨次跑措辞完全一致 → 画风统一）。自定义 = 在风格块框里写自己的风格块（英文）；无 = 不钉（但风格块框填了内容仍生效）。选了具名预设就忽略风格块框。"),
                 io.String.Input("style_profile", display_name="风格块", multiline=True, default="", optional=True, tooltip="自己写的风格块（英文）：逐字钉进每条改写结果（不许被释义/改写），一套图共用同一段即画风统一。风格预设选了具名档时本框被忽略。"),
                 io.Combo.Input("lora_profile", options=lora_profile_options(), default="none", optional=True, tooltip="LoRA 档案（LoRA Profiler 体检产物）：注入该 LoRA 的实测风格/角色特征，并强制最终提示词以触发词开头。列表在节点创建或刷新页面时更新。"),
@@ -98,7 +107,8 @@ class Krea2PromptEnhancerCloud(io.ComfyNode):
     @classmethod
     def execute(cls, prompt, skill, model, thinking, temperature, seed,
                 reasoning_effort="low", style_preset="无", style_profile="",
-                lora_profile="none", images=None, history_entry="none", api_key=""):
+                lora_profile="none", images=None, history_entry="none", api_key="",
+                task_type="文生图"):
         if history_entry != "none":
             e = find_history_entry(history_entry)
             if e is None:
@@ -108,13 +118,15 @@ class Krea2PromptEnhancerCloud(io.ComfyNode):
 
         provider, model_id = parse_model_option(model)
         frames = collect_frames(images)
+        mode = TASK_TYPE_LABELS.get(task_type, task_type)
         require_vision(provider, model_id, frames)
         if not prompt.strip() and not frames:
             raise ValueError("prompt is empty and no reference images connected.")
 
-        skill_body, refs = load_skill(skill, "generic")
+        skill_body, refs = load_skill(skill, mode)
         user_text, image_note = build_user_text(prompt, frames)
         system = KREA2_SYSTEM.format(
+            mode=mode,
             image_note=image_note,
             style_note=build_style_note(style_preset, style_profile),
             lora_note=build_lora_note(lora_profile),
@@ -125,7 +137,7 @@ class Krea2PromptEnhancerCloud(io.ComfyNode):
         user_content = [{"type": "text", "text": user_text}] + [image_part(f) for f in frames]
 
         try:
-            log(f"krea2 enhance: provider={provider} model={model_id} skill={skill} images={len(frames)} thinking={thinking} effort={reasoning_effort}")
+            log(f"krea2 enhance: provider={provider} model={model_id} mode={mode} skill={skill} images={len(frames)} thinking={thinking} effort={reasoning_effort}")
             log(f"user prompt: {user_text[:500]}")
             log(f"system prompt:\n{system}")
             content = chat(
@@ -138,7 +150,7 @@ class Krea2PromptEnhancerCloud(io.ComfyNode):
             append_history({
                 "ts": datetime.now().isoformat(timespec="seconds"),
                 "kind": "optimize",
-                "task_type": "cloud/krea2/t2i",
+                "task_type": f"cloud/krea2/{mode.lower()}",
                 "model": f"{provider}/{model_id}",
                 "thinking": thinking,
                 "input": prompt.strip() or f"{len(frames)} image(s), no text",

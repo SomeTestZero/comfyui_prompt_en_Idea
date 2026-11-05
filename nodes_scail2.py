@@ -10,6 +10,7 @@ from datetime import datetime
 from comfy_api.latest import io
 
 from .common import append_history, log, make_progress_cb
+from .categories import PROMPT_ENHANCE, PROMPT_IDEA
 from .nodes_cloud import (
     chat,
     image_part,
@@ -62,8 +63,8 @@ class SCAIL2SegmentPlan(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="SCAIL2SegmentPlan",
-            display_name="SCAIL-2 Segment Plan 自动分段",
-            category="utilities",
+            display_name="[yyp] SCAIL-2 Segment Plan 自动分段",
+            category=PROMPT_IDEA,
             search_aliases=["scail", "loop", "segment"],
             inputs=[
                 io.Int.Input("frame_count", default=200, min=1, tooltip="Total driving video frames - wire GetImageSize batch_size."),
@@ -92,8 +93,8 @@ class SCAIL2PromptGenerator(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="SCAIL2PromptGenerator",
-            display_name="SCAIL-2 Prompt Generator (Cloud API) 提示词生成",
-            category="prompt",
+            display_name="[yyp] SCAIL-2 Prompt Generator (Cloud API) 提示词生成",
+            category=PROMPT_ENHANCE,
             description="Writes the SCAIL-2 character-replacement prompt bundle from a short idea plus the reference/driving images: the English scene prompt (appearance + background, no actions - the driving video supplies motion) and the SAM3 tracking words for both videos. Same cloud provider surface as the H3 cloud nodes; disabled = passthrough of the manual inputs.",
             inputs=[
                 io.String.Input("hint", multiline=True, default="", tooltip="Optional extra direction in any language (mood, lighting, what to keep from the scene); everything it does not specify is taken from the images."),

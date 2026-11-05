@@ -59,10 +59,16 @@ def test_parse_and_options():
     except ValueError:
         pass
     options = cloud_model_options()
-    assert DEFAULT_MODEL in options and DEFAULT_MODEL == "volcengine-plan/glm-5.3-flash"
+    assert DEFAULT_MODEL in options and DEFAULT_MODEL == "workbuddy/deepseek-v4.1-flash"
     assert "volcengine/doubao-seed-2-1-pro-260628" in options
     assert "volcengine-plan/glm-5.3-flash" in options
     assert "deepseek/deepseek-v4-flash-vision-exp" in options
+    # workbuddy runs on the pi CLI's OAuth login, not an api_key
+    assert "workbuddy/deepseek-v4.1-flash" in options
+    assert nodes_cloud.oauth_provider("workbuddy")
+    assert not nodes_cloud.oauth_provider("deepseek")
+    for model in nodes_cloud.MODELS["workbuddy"]:
+        assert model["vision"], f"{model['id']} must stay vision-capable"
     # config-added models and providers appear in the options
     path, old = with_config(cloud={"volcengine": {"models": ["my-ep-id"]},
                                    "siliconflow": {"base_url": "https://api.siliconflow.cn/v1",
@@ -309,6 +315,94 @@ def test_interrogate_cloud_node():
     print("interrogate_cloud_node OK")
 
 
+def test_lora_preset_note_and_injection():
+    """LoRA presets: activation phrases go into the instruction verbatim and are
+    patched into the prompt if the rewrite drops them. Data lives in
+    lora_presets.json so the official skill files stay untouched."""
+    from h3_prompt_enhancer.common import (
+        apply_preset_triggers,
+        build_preset_note,
+        lora_preset_options,
+        read_lora_presets,
+    )
+
+    presets = read_lora_presets()
+    opts = lora_preset_options()
+    assert opts[0] == "不注入" and "武打·三件套（拳脚·稳）" in opts
+    bank = presets["武打·三件套（拳脚·稳）"]
+    assert bank["triggers"] == ["Unarmed combat interaction", "bunny_crisp_motion"]
+    note = build_preset_note("武打·三件套（拳脚·稳）")
+    assert "Unarmed combat interaction" in note and "bunny_crisp_motion" in note
+    assert "verbatim" in note and "Motion cues" in note
+    assert build_preset_note("不注入") == ""
+    assert build_preset_note("none") == ""  # legacy English sentinel
+    try:
+        build_preset_note("no-such-preset")
+        raise AssertionError("should raise")
+    except ValueError as e:
+        assert "not found" in str(e)
+
+    n = chr(10)
+    text = n.join(["summary:", "A duel.", "", "detailed_description:", "They trade one jab.",
+                   "", "overall_soundscape:", "Footsteps."])
+    out, added = apply_preset_triggers(text, "武打·三件套（拳脚·稳）")
+    assert added == ["Unarmed combat interaction", "bunny_crisp_motion"]
+    assert "Motion cues: Unarmed combat interaction, bunny_crisp_motion." in out
+    assert out.index("Motion cues:") < out.index("overall_soundscape:")
+    again, added2 = apply_preset_triggers(out, "武打·三件套（拳脚·稳）")
+    assert added2 == [] and again == out
+    assert apply_preset_triggers(text, "none") == (text, [])
+    partial = apply_preset_triggers("x Unarmed combat interaction y", "武打·三件套（拳脚·稳）")
+    assert partial[1] == ["bunny_crisp_motion"]
+    print("lora_preset_note_and_injection OK")
+
+
+def test_enhancer_cloud_lora_preset():
+    """The cloud enhancer injects the preset into the system prompt and repairs
+    the activation phrases in the returned prompt."""
+    import h3_prompt_enhancer.common as common
+    import h3_prompt_enhancer.nodes_cloud as cloud
+
+    class FakeCls:
+        class hidden:
+            unique_id = None
+
+    n = chr(10)
+    reply = n.join(["summary:", "A duel.", "", "detailed_description:", "They trade one jab.",
+                    "", "overall_soundscape:", "Footsteps."])
+    systems = []
+
+    def fake_chat(provider, model, system, user_content, **kw):
+        systems.append(system)
+        return reply
+
+    old_chat, old_path = cloud.chat, common.HISTORY_PATH
+    fd, hist = tempfile.mkstemp(suffix=".jsonl")
+    os.close(fd)
+    cloud.chat = fake_chat
+    common.HISTORY_PATH = hist
+    try:
+        out = cloud.H3PromptEnhancerCloud.execute.__func__(
+            FakeCls, prompt="both men fight", task_type="T2VA", skill="h3-prompt-writing",
+            model="volcengine-plan/glm-5.3-flash", thinking="disabled", temperature=0.7, seed=7,
+            lora_preset="武打·三件套（拳脚·稳）")
+        text = out.result[0]
+        assert out.result[1] == "T2VA"
+        assert "LoRA preset" in systems[0] and "Unarmed combat interaction" in systems[0]
+        assert "bunny_crisp_motion" in systems[0]
+        assert "Motion cues: Unarmed combat interaction, bunny_crisp_motion." in text
+        entries = common.read_history()
+        assert entries[-1]["lora_preset"] == "武打·三件套（拳脚·稳）"
+        systems.clear()
+        out2 = cloud.H3PromptEnhancerCloud.execute.__func__(
+            FakeCls, prompt="both men fight", task_type="T2VA", skill="h3-prompt-writing",
+            model="volcengine-plan/glm-5.3-flash", thinking="disabled", temperature=0.7, seed=7)
+        assert "LoRA preset" not in systems[0] and "Motion cues:" not in out2.result[0]
+    finally:
+        cloud.chat, common.HISTORY_PATH = old_chat, old_path
+        os.unlink(hist)
+    print("enhancer_cloud_lora_preset OK")
+
 if __name__ == "__main__":
     test_parse_and_options()
     test_resolve_provider_and_key()
@@ -316,4 +410,6 @@ if __name__ == "__main__":
     test_image_part_and_replay()
     test_chat_payload()
     test_interrogate_cloud_node()
+    test_lora_preset_note_and_injection()
+    test_enhancer_cloud_lora_preset()
     print("ALL CLOUD OFFLINE TESTS PASSED")

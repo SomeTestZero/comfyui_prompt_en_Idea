@@ -6,6 +6,7 @@ from comfy_api.latest import io
 
 import folder_paths
 
+from .categories import PROMPT_ENHANCE, PROMPT_TRANSLATE
 from .common import (
     _last_generation,
     append_history,
@@ -104,8 +105,8 @@ class DeepSeekPromptOptimizer(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="DeepSeekPromptOptimizer",
-            display_name="DeepSeek Prompt Optimizer",
-            category="prompt",
+            display_name="[yyp] DeepSeek Prompt Optimizer",
+            category=PROMPT_ENHANCE,
             inputs=[
                 io.String.Input("prompt", multiline=True, default=""),
                 io.Combo.Input("mode", options=["prompt_optimize", "chat"], default="prompt_optimize"),
@@ -202,8 +203,8 @@ class DeepSeekTranslator(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="DeepSeekTranslator",
-            display_name="DeepSeek Translator (审核翻译)",
-            category="prompt",
+            display_name="[yyp] DeepSeek Translator (审核翻译)",
+            category=PROMPT_TRANSLATE,
             inputs=[
                 io.String.Input("text", multiline=True, default=""),
                 io.Combo.Input("target_lang", options=["中文", "English"], default="中文"),

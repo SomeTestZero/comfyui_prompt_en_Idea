@@ -7,6 +7,7 @@ from .common import append_history, find_history_entry, history_entry_options, l
 from .llm_local import LocalLLM, local_options, tensor_to_base64_jpeg
 from .nodes_local import advanced_model_inputs, build_model_config, model_input, sampling_inputs
 from .skills import load_skill, scan_skills
+from .categories import PROMPT_LLM
 
 INTERROGATE_SYSTEM = """You are a forensic visual analyst for generative image models. Analyze the attached image as visual evidence and produce a reverse prompt strictly following the installed skill guide below.
 
@@ -35,8 +36,8 @@ class UniversalImageInterrogatorLocal(io.ComfyNode):
         default_skill = "img2prompt-natural" if "img2prompt-natural" in skills else skills[0]
         return io.Schema(
             node_id="UniversalImageInterrogatorLocal",
-            display_name="Universal Image Interrogator (Local GGUF)",
-            category="prompt",
+            display_name="[yyp] Universal Image Interrogator (Local GGUF)",
+            category=PROMPT_LLM,
             description="Reverse-prompt an image with a local multimodal GGUF model (llama.cpp). Skill selects the output style: img2prompt-natural (natural-language paragraph for Krea 2/FLUX-era models) or img2prompt-tags (booru tag list for SD1.5/Pony/SDXL-era models). custom_instruction steers every frame (e.g. skip watermarks). Batches are described frame by frame. Unloads the model afterwards unless keep_loaded is on.",
             inputs=[
                 io.Image.Input("image", tooltip="Image(s) to reverse-prompt. A batch is processed frame by frame and the results are joined."),

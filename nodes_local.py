@@ -10,6 +10,7 @@ from .nodes_api import TRANSLATE_SYSTEM
 from .skills import MODES, load_skill, scan_skills
 
 import folder_paths
+from . import categories
 
 SYSTEM_TEMPLATE = """You are a professional prompt engineer for the MiniMax H3 video generation model. Rewrite the user's request into a final H3 generation prompt that strictly follows the official skill and writing guide below.
 
@@ -150,8 +151,8 @@ class H3PromptEnhancerLocal(io.ComfyNode):
         skills = scan_skills()
         return io.Schema(
             node_id="H3PromptEnhancerLocal",
-            display_name="H3 Prompt Enhancer (Local GGUF)",
-            category="prompt",
+            display_name="[yyp] H3 Prompt Enhancer (Local GGUF)",
+            category=categories.PROMPT_ENHANCE,
             description="Rewrite a rough request into a structured MiniMax H3 prompt with a local multimodal GGUF model (llama.cpp), guided by an installed skill. Supports multiple reference images; with an empty prompt, the intent is reverse-inferred from the connected images/keyframes. Unloads the model afterwards unless keep_loaded is on.",
             inputs=[
                 io.String.Input("prompt", multiline=True, default=""),
@@ -267,8 +268,8 @@ class H3TranslatorLocal(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="H3TranslatorLocal",
-            display_name="H3 Translator (Local GGUF) 审核翻译",
-            category="prompt",
+            display_name="[yyp] H3 Translator (Local GGUF) 审核翻译",
+            category=categories.PROMPT_TRANSLATE,
             description="Translate a prompt for quick review with the local GGUF model. Same model-config defaults as the enhancer: wire it after an enhancer running with keep_loaded=True and the model is loaded only once, then unloaded here.",
             inputs=[
                 io.String.Input("text", multiline=True, default="", tooltip="Linked input hides the box; widget kept (not force_input) so saved workflows round-trip correctly."),
@@ -325,8 +326,8 @@ class H3LLMUnload(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="H3LLMUnload",
-            display_name="Unload Local LLM (H3)",
-            category="prompt",
+            display_name="[yyp] Unload Local LLM (H3)",
+            category=categories.PROMPT_LLM,
             description="Unload the local GGUF model to free VRAM. Pass-through, wire it after a keep_loaded run.",
             inputs=[io.AnyType.Input("any_input", optional=True)],
             outputs=[io.AnyType.Output(display_name="any_output")],

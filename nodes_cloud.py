@@ -6,12 +6,16 @@ from comfy_api.latest import io
 
 from .common import (
     append_history,
+    apply_preset_triggers,
+    build_preset_note,
     call_chat_completions,
     clean_api_key,
     find_history_entry,
     history_entry_options,
     load_config,
     log,
+    LORA_PRESET_NONE,
+    lora_preset_options,
     make_progress_cb,
 )
 from .llm_local import IMAGE_LONG_EDGE, tensor_to_base64_jpeg
@@ -31,6 +35,8 @@ from .nodes_local import (
     derive_mode,
 )
 from .skills import load_skill, scan_skills
+from . import categories
+from . import workbuddy
 
 # OpenAI-compatible cloud endpoints. config.json's "cloud" section overrides
 # the built-in base_url / api_key per provider and can add custom providers
@@ -54,6 +60,13 @@ PROVIDERS = {
     "deepseek": {
         "base_url": "https://api.deepseek.com",
         "env_key": "DEEPSEEK_API_KEY",
+    },
+    # Not an OpenAI-key endpoint: the bearer token is an OAuth access token read
+    # from pi's own login (auth.json) and refreshed here when it is close to
+    # expiry. No env_key - the usual api_key plumbing does not apply.
+    "workbuddy": {
+        "base_url": workbuddy.WB_BASE,
+        "oauth": True,
     },
 }
 
@@ -122,9 +135,26 @@ MODELS = {
         {"id": "deepseek-v4-flash", "vision": False, "thinking": "controlled"},
         {"id": "deepseek-v4-pro", "vision": False, "thinking": "controlled"},
     ],
+    # WorkBuddy / CodeBuddy subscription quota. Metadata mirrors the model
+    # catalog that endpoints/workbuddy.ts registers in pi (all vision-capable).
+    # Effort flags: only models whose catalog entry lists supportedEfforts get a
+    # mapping; the others run at their server-side default.
+    "workbuddy": [
+        # 1M ctx / 128K out. Default model: switchable thinking, low/high/max.
+        {"id": "deepseek-v4.1-flash", "vision": True, "thinking": "controlled",
+         "effort": {"low": "low", "medium": "high", "high": "max"}},
+        {"id": "deepseek-v4-pro", "vision": True, "thinking": "controlled"},
+        {"id": "glm-5.3-flash", "vision": True, "thinking": "forced",
+         "effort": {"low": "low", "medium": "high", "high": "max"}},
+        {"id": "kimi-k3-1", "vision": True, "thinking": "controlled"},
+        {"id": "minimax-m3.1-flash", "vision": True, "thinking": "forced",
+         "effort": {"low": "low", "medium": "high", "high": "max"}},
+        {"id": "space-bunny", "vision": True, "thinking": "forced",
+         "effort": {"low": "low", "medium": "high", "high": "max"}},
+    ],
 }
 
-DEFAULT_MODEL = "volcengine-plan/glm-5.3-flash"
+DEFAULT_MODEL = "workbuddy/deepseek-v4.1-flash"
 
 IDEA_MAX_TOKENS = 16384
 ENHANCE_MAX_TOKENS = 16384
@@ -144,6 +174,11 @@ def cloud_model_options():
     for provider, pcfg in cloud_cfg.items():
         if provider not in MODELS:
             options += [f"{provider}/{mid}" for mid in pcfg.get("models", [])]
+    # The frontend seeds a COMBO widget from options[0], not from the declared
+    # default, so the default model has to lead the list to be selected.
+    if DEFAULT_MODEL in options:
+        options.remove(DEFAULT_MODEL)
+        options.insert(0, DEFAULT_MODEL)
     return options
 
 
@@ -171,9 +206,18 @@ def resolve_provider(provider):
     return base_url, str(pcfg.get("api_key", "")).strip()
 
 
+def oauth_provider(provider):
+    return bool(PROVIDERS.get(provider, {}).get("oauth"))
+
+
 def resolve_api_key(provider, node_key):
     """Node input > config.json cloud.<provider>.api_key > provider env var.
-    The deepseek provider also falls back to the legacy top-level api_key."""
+    The deepseek provider also falls back to the legacy top-level api_key.
+    OAuth providers (workbuddy) ignore all of those and read the CLI login."""
+    if oauth_provider(provider):
+        return workbuddy.access_token(
+            load_config().get("cloud", {}).get(provider, {}).get("credential_path")
+        )
     key = clean_api_key(node_key or "")
     if not key:
         key = resolve_provider(provider)[1]
@@ -215,8 +259,8 @@ def chat(provider, model, system, user_content, *, temperature, seed, thinking,
     # thinking off there is no depth to tune anyway.
     if controlled and not thinking:
         effort = None
-    return call_chat_completions(
-        {"base_url": base_url}, key, model, system, user_content, temperature,
+    cfg = {"base_url": base_url}
+    kwargs = dict(
         on_text=on_text,
         thinking=thinking,
         seed=seed,
@@ -224,6 +268,23 @@ def chat(provider, model, system, user_content, *, temperature, seed, thinking,
         control_thinking=controlled,
         reasoning_effort=effort,
     )
+    if oauth_provider(provider):
+        # WorkBuddy needs its own attribution headers, a different path and, when
+        # the token was revoked between the pre-flight check and the request, one
+        # forced refresh + retry.
+        cfg = {"base_url": base_url, "chat_path": "/chat/completions",
+               "headers": workbuddy.chat_headers(key)}
+        try:
+            return call_chat_completions(cfg, key, model, system, user_content, temperature, **kwargs)
+        except RuntimeError as e:
+            if " 401 " not in str(e):
+                raise
+            log("workbuddy 401 - forcing a token refresh and retrying once")
+            credential_path = load_config().get("cloud", {}).get(provider, {}).get("credential_path")
+            token = workbuddy.access_token(credential_path, force_refresh=True)
+            cfg["headers"] = workbuddy.chat_headers(token)
+            return call_chat_completions(cfg, token, model, system, user_content, temperature, **kwargs)
+    return call_chat_completions(cfg, key, model, system, user_content, temperature, **kwargs)
 
 
 def replay_entry_mode(entry, task_type):
@@ -239,9 +300,11 @@ def model_combo():
     return io.Combo.Input(
         "model", options=cloud_model_options(), default=DEFAULT_MODEL,
         tooltip="provider/model pairs on OpenAI-compatible cloud endpoints. "
+                "workbuddy = WorkBuddy/CodeBuddy subscription, auth borrowed from the pi CLI login "
+                "(no api_key needed; run /login workbuddy in pi once and the token refreshes itself), "
                 "volcengine = pay-as-you-go Ark, volcengine-plan/coding = Agent/Coding Plan setmeal keys, "
-                "deepseek = DeepSeek API. Image inputs need a vision model (Doubao Seed, GLM-5.3-Flash, "
-                "DeepSeek V4-Flash-Vision). Extra models: cloud.<provider>.models in config.json.",
+                "deepseek = DeepSeek API. Image inputs need a vision model - every workbuddy model above is "
+                "vision-capable. Extra models: cloud.<provider>.models in config.json.",
     )
 
 
@@ -250,8 +313,8 @@ class H3IdeaGeneratorCloud(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="H3IdeaGeneratorCloud",
-            display_name="H3 Idea Generator (Cloud API) 灵感生成",
-            category="prompt",
+            display_name="[yyp] H3 Idea Generator (Cloud API) 灵感生成",
+            category=categories.PROMPT_IDEA,
             description="Cloud API variant of the H3 Idea Generator: the same seed-drawn story drafts (setup + shot-by-shot beats, duration-stamped, long-take beat sheets), written by a multimodal cloud model instead of a local GGUF. Image inputs need a vision model; the seed draws the same ingredients as the local node, so both backends riff on the same reproducible combinations. API key: api_key input > config.json cloud.<provider>.api_key > provider environment variable.",
             inputs=[
                 io.String.Input("hint", multiline=True, default="", tooltip="Optional theme/clue to riff on - highest priority, everything it does not specify is filled from seed-picked ingredients, so a style-only hint like '3DCG' still gets a different subject/setting/event every seed (conflicting ingredients are dropped). No need to write the duration here, it has its own input."),
@@ -337,8 +400,8 @@ class H3PromptEnhancerCloud(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="H3PromptEnhancerCloud",
-            display_name="H3 Prompt Enhancer (Cloud API)",
-            category="prompt",
+            display_name="[yyp] H3 Prompt Enhancer (Cloud API)",
+            category=categories.PROMPT_ENHANCE,
             description="Cloud API variant of the H3 Prompt Enhancer: rewrites a rough request into a structured MiniMax H3 prompt with a multimodal cloud model, guided by the same installed skill and image wiring as the local node (reference images, keyframes, empty-prompt reverse inference). Needs a vision model when images are connected. Supports history_entry replay across both backends.",
             inputs=[
                 io.String.Input("prompt", multiline=True, default=""),
@@ -362,6 +425,7 @@ class H3PromptEnhancerCloud(io.ComfyNode):
                 ),
                 io.Combo.Input("history_entry", options=history_entry_options(), default="none", optional=True, tooltip="Replay a stored run (local or cloud) instead of calling the API. List refreshes when the node is created or the page reloads."),
                 io.String.Input("api_key", default="", optional=True, tooltip="API key for the selected provider, overriding config.json and the environment variable for this run."),
+                io.Combo.Input("lora_preset", options=lora_preset_options(), default=LORA_PRESET_NONE, optional=True, tooltip="这次生成挂了哪几颗 LoRA：选中后增强器会把该 LoRA 的触发词逐字写进提示词，并按它的特性约束动作写法。预设数据在 lora_presets.json（与官方 skill 分开，skill 保持原样）。  拳脚/兵器 = Fight_Flow 的交互触发词；·稳 档不注入 Combat 的强度触发词（作者口径：无触发动作最稳），·强打 档加 prfight2（更快更狠，人体稳定性下降）；单开档用于排查哪颗 LoRA 让画面乱。改了 json 需刷新页面才会重读列表。"),
             ],
             outputs=[
                 io.String.Output(display_name="enhanced_prompt"),
@@ -373,7 +437,7 @@ class H3PromptEnhancerCloud(io.ComfyNode):
     @classmethod
     def execute(cls, prompt, task_type, skill, model, thinking, temperature, seed,
                 reasoning_effort="low", first_frame=None, last_frame=None,
-                reference_images=None, history_entry="none", api_key=""):
+                reference_images=None, history_entry="none", api_key="", lora_preset=LORA_PRESET_NONE):
         if history_entry != "none":
             e = find_history_entry(history_entry)
             if e is None:
@@ -392,7 +456,7 @@ class H3PromptEnhancerCloud(io.ComfyNode):
         user_text, image_note = build_enhance_user_text(prompt, frames)
         system = SYSTEM_TEMPLATE.format(
             mode=mode,
-            image_note=image_note,
+            image_note=image_note + build_preset_note(lora_preset),
             skill_body=skill_body,
             ref_names=" + ".join(n for n, _ in refs) or "none",
             ref_text="\n\n".join(t for _, t in refs),
@@ -400,7 +464,7 @@ class H3PromptEnhancerCloud(io.ComfyNode):
         user_content = [{"type": "text", "text": user_text}] + [image_part(f) for f, _ in frames]
 
         try:
-            log(f"cloud enhance: provider={provider} model={model_id} mode={mode} skill={skill} images={len(frames)} thinking={thinking} effort={reasoning_effort}")
+            log(f"cloud enhance: provider={provider} model={model_id} mode={mode} skill={skill} images={len(frames)} thinking={thinking} effort={reasoning_effort} lora_preset={lora_preset}")
             log(f"user prompt: {user_text[:500]}")
             log(f"system prompt:\n{system}")
             content = chat(
@@ -410,12 +474,16 @@ class H3PromptEnhancerCloud(io.ComfyNode):
                 on_text=make_progress_cb(cls.hidden.unique_id),
             )
             log(f"response ({len(content)} chars):\n{content[:1000]}")
+            content, injected = apply_preset_triggers(content, lora_preset)
+            if injected:
+                log(f"lora preset: activation phrases appended verbatim: {injected}")
             append_history({
                 "ts": datetime.now().isoformat(timespec="seconds"),
                 "kind": "optimize",
                 "task_type": f"cloud/{mode}",
                 "model": f"{provider}/{model_id}",
                 "thinking": thinking,
+                "lora_preset": lora_preset,
                 "input": prompt.strip() or f"{len(frames)} image(s), no text",
                 "output": content,
             })
@@ -430,8 +498,8 @@ class H3TranslatorCloud(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="H3TranslatorCloud",
-            display_name="H3 Translator (Cloud API) 审核翻译",
-            category="prompt",
+            display_name="[yyp] H3 Translator (Cloud API) 审核翻译",
+            category=categories.PROMPT_TRANSLATE,
             description="Cloud API variant of the H3 Translator: same review-oriented translation rules (structure, shot markers, reference labels and timing notation preserved), executed by a cloud model. Text-only input - any model in the list works.",
             inputs=[
                 io.String.Input("text", multiline=True, default="", tooltip="Linked input hides the box; widget kept (not force_input) so saved workflows round-trip correctly."),
@@ -477,8 +545,8 @@ class UniversalImageInterrogatorCloud(io.ComfyNode):
         default_skill = "img2prompt-natural" if "img2prompt-natural" in skills else skills[0]
         return io.Schema(
             node_id="UniversalImageInterrogatorCloud",
-            display_name="Universal Image Interrogator (Cloud API)",
-            category="prompt",
+            display_name="[yyp] Universal Image Interrogator (Cloud API)",
+            category=categories.PROMPT_LLM,
             description="Cloud API variant of the Universal Image Interrogator: the same skill-guided reverse prompt (img2prompt-natural for Krea 2/FLUX-era models, img2prompt-tags for SD1.5/Pony/SDXL-era models) and custom_instruction steering, written by a multimodal cloud model instead of a local GGUF. Batches are described frame by frame with one call each and joined with the same separator as the local node. Image input needs a vision model - a text-only model is rejected up front. Supports history_entry replay of interrogations from either backend.",
             inputs=[
                 io.Image.Input("image", tooltip="Image(s) to reverse-prompt. A batch is processed frame by frame and the results are joined."),

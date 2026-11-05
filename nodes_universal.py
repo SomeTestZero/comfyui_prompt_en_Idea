@@ -7,6 +7,7 @@ from .common import append_history, find_history_entry, history_entry_options, l
 from .llm_local import LocalLLM, tensor_to_base64_jpeg
 from .nodes_local import advanced_model_inputs, build_model_config, model_input, sampling_inputs
 from .skills import load_skill, scan_skills
+from .categories import PROMPT_ENHANCE
 
 SYSTEM_TEMPLATE = """You are a professional prompt engineer for generative image and video models. Rewrite the user's request into a final generation prompt that strictly follows the installed skill guide below.
 
@@ -61,8 +62,8 @@ class UniversalPromptEnhancerLocal(io.ComfyNode):
         default_skill = "krea2-prompt-writing" if "krea2-prompt-writing" in skills else skills[0]
         return io.Schema(
             node_id="UniversalPromptEnhancerLocal",
-            display_name="Universal Prompt Enhancer (Local GGUF)",
-            category="prompt",
+            display_name="[yyp] Universal Prompt Enhancer (Local GGUF)",
+            category=PROMPT_ENHANCE,
             description="Rewrite a rough request into a structured prompt with a local multimodal GGUF model (llama.cpp), guided by whichever skill is installed under skills/ (e.g. krea2-prompt-writing). Model-agnostic companion to the H3 enhancer. With an empty prompt, the intent is reverse-inferred from the connected reference images. Select a lora_profile to keep the rewrite from fighting the LoRA you generate with. Unloads the model afterwards unless keep_loaded is on.",
             inputs=[
                 io.String.Input("prompt", multiline=True, default=""),

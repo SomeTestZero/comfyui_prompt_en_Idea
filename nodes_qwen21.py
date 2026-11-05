@@ -13,6 +13,7 @@ from .nodes_cloud import (
     require_vision,
 )
 from .skills import load_skill, scan_skills
+from .categories import PROMPT_ENHANCE
 
 # The official PE guides end in a JSON envelope (rewritten_prompt / wh_ratio /
 # ratio_follow); the workflow's resolution node owns sizing, so the envelope is
@@ -162,8 +163,8 @@ class QwenImage21PromptEnhancerCloud(io.ComfyNode):
         default_skill = "qwen-image21-prompt-writing" if "qwen-image21-prompt-writing" in skills else skills[0]
         return io.Schema(
             node_id="QwenImage21PromptEnhancerCloud",
-            display_name="Qwen Image 2.1 Prompt Enhancer (Cloud API)",
-            category="prompt",
+            display_name="[yyp] Qwen Image 2.1 Prompt Enhancer (Cloud API)",
+            category=PROMPT_ENHANCE,
             description="Rewrite a rough request into a Qwen-Image-2.1 prompt (text-to-image, instruction editing, or character reference sheet) with a multimodal cloud model, guided by the installed skill (qwen-image21-prompt-writing archives the official PE-T2I / PE-I2I prompt-rewriting system prompts plus a character-sheet composition guide). image_N sockets map to TextEncodeQwenImage21's same-numbered slots and the prompt addresses them as <image1>, <image2>, ... Needs a vision model when images are connected. Supports history_entry replay across both backends.",
             inputs=[
                 io.String.Input("prompt", multiline=True, default=""),
@@ -180,9 +181,12 @@ class QwenImage21PromptEnhancerCloud(io.ComfyNode):
                 io.Autogrow.Input(
                     "images",
                     optional=True,
-                    template=io.Autogrow.TemplatePrefix(
-                        io.Image.Input("image", tooltip="Source/reference image; image_N maps to TextEncodeQwenImage21's images.image_N slot and to <imageN> in the rewritten prompt."),
-                        prefix="image_", min=0, max=12,
+                    # Same 1-based names as TextEncodeQwenImage21 so image_N means the same
+                    # picture on both nodes instead of shifting by one.
+                    template=io.Autogrow.TemplateNames(
+                        io.Image.Input("image", tooltip="Source/reference image; image_N is TextEncodeQwenImage21's images.image_N slot and <imageN> in the rewritten prompt."),
+                        names=[f"image_{i}" for i in range(1, 17)],
+                        min=0,
                     ),
                     tooltip="Source and reference images in slot order; wire the same image to the same-numbered images.image_N on TextEncodeQwenImage21. Any connected image -> Edit mode. With an empty prompt, the edit intent is reverse-inferred from these images.",
                 ),

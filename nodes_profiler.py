@@ -8,6 +8,7 @@ from .common import (append_history, find_history_entry, history_entry_options, 
                      make_progress_cb, save_lora_profile)
 from .llm_local import LocalLLM, tensor_to_base64_jpeg
 from .nodes_local import advanced_model_inputs, build_model_config, model_input, sampling_inputs
+from .categories import PROMPT_LLM
 
 SYSTEM_TEMPLATES = {
     "character": """You are profiling a character LoRA for a generative image model. The attached image was generated with the LoRA active under a neutral probe prompt. Extract the identity the LoRA reliably produces.
@@ -33,8 +34,8 @@ class LoraProfilerLocal(io.ComfyNode):
         loras = folder_paths.get_filename_list("loras") or ["(no loras found)"]
         return io.Schema(
             node_id="LoraProfilerLocal",
-            display_name="LoRA Profiler (Local GGUF)",
-            category="prompt",
+            display_name="[yyp] LoRA Profiler (Local GGUF)",
+            category=PROMPT_LLM,
             description="Profile what a LoRA reliably produces: feed a probe image generated with the LoRA active and a neutral prompt, and the local vision model extracts its stable traits. The profile is stored under the LoRA's name in lora_contexts.json, where the Universal Prompt Enhancer's lora_profile input picks it up. Best with a single probe image. Unloads the model afterwards unless keep_loaded is on.",
             inputs=[
                 io.Image.Input("image", tooltip="Probe image generated with the LoRA active and a neutral prompt."),

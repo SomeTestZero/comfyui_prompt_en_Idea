@@ -5,6 +5,9 @@ SKILLS_DIR = os.path.join(NODE_DIR, "skills")
 
 MODES = ["Auto", "T2VA", "I2VA", "FL2VA", "L2VA", "Ref2VA"]
 BASE_MODES = ("T2VA", "I2VA", "FL2VA", "L2VA")
+# Guides keyed to a task mode ({mode}-en.txt) load only when routed to that mode,
+# so one mode's guide never bleeds into another's prompt.
+KEYED_GUIDE_MODES = ("T2I", "Edit", "CharacterSheet", "CharacterSwap")
 
 
 def scan_skills():
@@ -29,9 +32,9 @@ def load_skill(name, mode):
 
     Follows the h3-prompt-writing routing rule: base modes read base-en.txt,
     Ref2VA reads ref-en.txt. A guide keyed to the mode name ({mode}-en.txt
-    lowercased, e.g. t2i-en.txt / edit-en.txt for qwen-image21-prompt-writing)
-    wins next; skills with a different references layout get all their
-    reference files.
+    lowercased, e.g. t2i-en.txt / charactersheet-en.txt for qwen-image21-prompt-writing)
+    wins next; the fallback loads the skill's general reference files, skipping
+    mode-keyed guides (or all of them when the skill holds nothing else).
     """
     skill_dir = _safe_path(SKILLS_DIR, name)
     skill_path = os.path.join(skill_dir, "SKILL.md")
@@ -53,11 +56,10 @@ def load_skill(name, mode):
         elif os.path.isfile(keyed):
             chosen = [keyed]
         else:
-            chosen = [
-                os.path.join(refs_dir, n)
-                for n in sorted(os.listdir(refs_dir))
-                if n.lower().endswith((".txt", ".md"))
-            ]
+            names = [n for n in sorted(os.listdir(refs_dir)) if n.lower().endswith((".txt", ".md"))]
+            skip = {f"{m.lower()}-en.txt" for m in KEYED_GUIDE_MODES}
+            general = [n for n in names if n.lower() not in skip]
+            chosen = [os.path.join(refs_dir, n) for n in (general or names)]
         for path in chosen:
             with open(path, "r", encoding="utf-8") as f:
                 refs.append((os.path.relpath(path, skill_dir), f.read()))

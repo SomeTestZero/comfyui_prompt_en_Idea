@@ -25,6 +25,13 @@ def test_skill_routing():
     assert "Krea 2" in body
     assert {n for n, _ in refs} == {os.path.join("references", "official-prompting.md"),
                                     os.path.join("references", "expansion.txt")}
+    # T2I keeps the official guides; the sheet guide loads only when routed
+    body, refs = load_skill("krea2-prompt-writing", "T2I")
+    assert {n for n, _ in refs} == {os.path.join("references", "official-prompting.md"),
+                                    os.path.join("references", "expansion.txt")}
+    body, refs = load_skill("krea2-prompt-writing", "CharacterSheet")
+    assert {n for n, _ in refs} == {os.path.join("references", "charactersheet-en.txt")}
+    assert "Character Reference Sheet" in refs[0][1]
     print("skill_routing OK")
 
 
@@ -94,8 +101,46 @@ def test_krea2_node():
     print("krea2_node OK")
 
 
+def test_charactersheet_node():
+    node = nodes_krea2.Krea2PromptEnhancerCloud.PREPARE_CLASS_CLONE(None)
+    calls = []
+
+    def fake_chat(provider, model, system, user_content, **kw):
+        calls.append({"system": system, "user": user_content})
+        return "sheet-prompt"
+
+    old_chat, old_path = nodes_krea2.chat, common.HISTORY_PATH
+    fd, hist = tempfile.mkstemp(suffix=".jsonl")
+    os.close(fd)
+    nodes_krea2.chat = fake_chat
+    common.HISTORY_PATH = hist
+    try:
+        out = node.execute(prompt="a swordswoman named Riven", skill="krea2-prompt-writing",
+                           model="volcengine-plan/glm-5.3-flash", thinking="disabled",
+                           temperature=0.7, seed=3, task_type="人物卡")
+        assert out.result == ("sheet-prompt",)
+        system = calls[0]["system"]
+        assert "Task mode: CharacterSheet" in system
+        assert "Character Reference Sheet Prompt Expert (Krea 2)" in system
+        assert "immense rocket launch" not in system  # official guides not routed in
+        entries = common.read_history()
+        assert entries[0]["task_type"] == "cloud/krea2/charactersheet"
+        # legacy English value passes through (saved workflows keep loading)
+        node.execute(prompt="a teapot", skill="krea2-prompt-writing",
+                     model="volcengine-plan/glm-5.3-flash", thinking="disabled",
+                     temperature=0.7, seed=4, task_type="T2I")
+        assert "Task mode: T2I" in calls[1]["system"]
+        assert "Character Reference Sheet" not in calls[1]["system"]
+        assert common.read_history()[1]["task_type"] == "cloud/krea2/t2i"
+    finally:
+        nodes_krea2.chat, common.HISTORY_PATH = old_chat, old_path
+        os.unlink(hist)
+    print("charactersheet_node OK")
+
+
 if __name__ == "__main__":
     test_skill_routing()
     test_user_text()
     test_krea2_node()
+    test_charactersheet_node()
     print("ALL KREA2 OFFLINE TESTS PASSED")
