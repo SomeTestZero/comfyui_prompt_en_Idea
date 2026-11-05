@@ -13,8 +13,10 @@ from .nodes_local import H3LLMUnload, H3PromptEnhancerLocal, H3TranslatorLocal
 from .nodes_qwen21 import QwenImage21PromptEnhancerCloud
 from .nodes_interrogate import UniversalImageInterrogatorLocal
 from .nodes_krea2 import Krea2PromptEnhancerCloud
+from .nodes_moss import MOSSPromptEnhancerCloud, MOSSPromptEnhancerLocal
 from .nodes_profiler import LoraProfilerLocal
 from .nodes_scail2 import SCAIL2PromptGenerator, SCAIL2SegmentPlan
+from .nodes_swap import H3SwapPromptCloud
 from .nodes_universal import UniversalPromptEnhancerLocal
 
 apply_unload_hook()
@@ -40,6 +42,9 @@ class H3PromptEnhancerExtension(ComfyExtension):
             H3TranslatorCloud,
             QwenImage21PromptEnhancerCloud,
             Krea2PromptEnhancerCloud,
+            MOSSPromptEnhancerLocal,
+            MOSSPromptEnhancerCloud,
+            H3SwapPromptCloud,
             UniversalImageInterrogatorCloud,
             SCAIL2SegmentPlan,
             SCAIL2PromptGenerator,

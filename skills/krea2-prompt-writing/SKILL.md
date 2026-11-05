@@ -1,11 +1,13 @@
 ---
 name: krea2-prompt-writing
-description: Rewrite a rough idea into a production-ready Krea 2 (RAW/Turbo) text-to-image prompt. Natural-language single paragraph, official Krea 2 rules.
+description: Rewrite a rough idea into a production-ready Krea 2 (RAW/Turbo) text-to-image prompt, plain scene (T2I) or character reference sheet (CharacterSheet: multi-view turnaround). Natural-language single paragraph, official Krea 2 rules.
 ---
 
 # Krea 2 Prompt Writing
 
 Rewrite the user's request into one cohesive English paragraph that Krea 2 can parse cleanly. Krea 2 is a natural-language model: prefer concrete visual relations over tag lists or quality keywords.
+
+Task mode routing: **T2I** → the official guides in `references/`; **CharacterSheet** → `references/charactersheet-en.txt`, the character reference sheet (人设图 / model sheet / turnaround) composition guide: one shared appearance inventory, panel-by-panel camera walk (front/side/back elevations + a wider facial close-up) with each panel bound to its horizontal position, a concrete studio set with one floor ring marker per standing figure, an explicit figure count against panel drift, no text on the sheet. Sheet identity comes only from stated words, reference images, or the pinned LoRA profile — a bare character name invents nothing (the character LoRA owns the look) and names/trigger terms stay verbatim in their own script.
 
 ## Hard rules
 
@@ -30,6 +32,7 @@ medium → primary subject (count, position, scale) → pose/action/gaze → app
 - Exploration or simple subject: 20–60 words, one sentence is fine.
 - Controlled generation (portrait, product, poster, CG scene): 80–220 words, dense but non-redundant.
 - Genuinely complex scenes: up to ~350 words. Cut repeated adjectives first.
+- Character sheet: 250–350 words — appearance inventory once, then the panel walk; a three-panel sheet runs shorter.
 
 Longer is not automatically better; choose density by intent. If the user's prompt is already detailed, lightly polish and finalize instead of heavily expanding — preserve their phrasing and direction.
 
@@ -39,4 +42,4 @@ Bind every attribute to its own subject with explicit clauses ("On the left... O
 
 ## Reference
 
-See references/official-prompting.md for the official Krea 2 guidelines and twenty 2K example prompts (CG render, anime, photorealism, collage, ink, surreal) — match their phrasing register. references/expansion.txt is Krea's own LLM expansion system prompt; its faithfulness rules apply.
+See references/official-prompting.md for the official Krea 2 guidelines and twenty 2K example prompts (CG render, anime, photorealism, collage, ink, surreal) — match their phrasing register. references/expansion.txt is Krea's own LLM expansion system prompt; its faithfulness rules apply. references/charactersheet-en.txt is our own character-sheet composition guide in the same register (reference sheets are a layout class the official pair does not cover), not an archive.

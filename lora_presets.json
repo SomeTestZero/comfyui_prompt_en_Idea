@@ -1,0 +1,44 @@
+{
+ "武打·三件套（拳脚·稳）": {
+  "triggers": [
+   "Unarmed combat interaction",
+   "bunny_crisp_motion"
+  ],
+  "guidance": "LoRAs in play: H3_Combat_V2 0.65, Motion_Repair_V2 0.35, H3_Fight_Flow_V1 0.35. H3_Combat_V2 runs without its intensity trigger on purpose: the author's guidance is that no trigger gives the most stable anatomy, and prfight2 is only for more aggression. Write unarmed exchanges as single, clearly separated strikes: one attacker acts per beat, each strike has a visible start and a visible end, and the two bodies stay far enough apart that every limb reads clearly. Never ask for speed ramps, slow motion, motion blur, afterimages, double exposure, overlapping bodies or limbs passing through each other."
+ },
+ "武打·三件套（兵器·稳）": {
+  "triggers": [
+   "Melee weapon interaction",
+   "bunny_crisp_motion"
+  ],
+  "guidance": "LoRAs in play: H3_Combat_V2 0.65, Motion_Repair_V2 0.35, H3_Fight_Flow_V1 0.35. H3_Combat_V2 runs without its intensity trigger on purpose: the author's guidance is that no trigger gives the most stable anatomy. For armed exchanges, keep blade positions readable from contact to recovery and never let a weapon or limb pass through the other body. Write armed exchanges as single, clearly separated strikes: one attacker acts per beat, each strike has a visible start and a visible end, and the two bodies stay far enough apart that every limb reads clearly. Never ask for speed ramps, slow motion, motion blur, afterimages, double exposure, overlapping bodies or limbs passing through each other."
+ },
+ "武打·三件套（拳脚·强打）": {
+  "triggers": [
+   "prfight2",
+   "Unarmed combat interaction",
+   "bunny_crisp_motion"
+  ],
+  "guidance": "LoRAs in play: H3_Combat_V2 0.65 (intensity trigger prfight2 on), Motion_Repair_V2 0.35, H3_Fight_Flow_V1 0.35. Higher aggression comes from prfight2, which trades some anatomical stability for speed and impact; keep each strike short and separate so the exchange does not turn into an endless reset-free flurry. Write unarmed exchanges as single, clearly separated strikes: one attacker acts per beat, each strike has a visible start and a visible end, and the two bodies stay far enough apart that every limb reads clearly. Never ask for speed ramps, slow motion, motion blur, afterimages, double exposure, overlapping bodies or limbs passing through each other."
+ },
+ "武打·三件套（兵器·强打）": {
+  "triggers": [
+   "prfight2",
+   "Melee weapon interaction",
+   "bunny_crisp_motion"
+  ],
+  "guidance": "LoRAs in play: H3_Combat_V2 0.65 (intensity trigger prfight2 on), Motion_Repair_V2 0.35, H3_Fight_Flow_V1 0.35. Higher aggression comes from prfight2; keep blade positions readable from contact to recovery and never let a weapon or limb pass through the other body. Write armed exchanges as single, clearly separated strikes: one attacker acts per beat, each strike has a visible start and a visible end, and the two bodies stay far enough apart that every limb reads clearly. Never ask for speed ramps, slow motion, motion blur, afterimages, double exposure, overlapping bodies or limbs passing through each other."
+ },
+ "武打·单开 Combat V2": {
+  "triggers": [
+   "prfight2"
+  ],
+  "guidance": "LoRA in play: H3_Combat_V2 0.65 with its intensity trigger prfight2. Write the fight as single, clearly separated strikes: one attacker acts per beat, each strike has a visible start and a visible end, and the two bodies stay far enough apart that every limb reads clearly. Never ask for speed ramps, slow motion, motion blur, afterimages, double exposure, overlapping bodies or limbs passing through each other."
+ },
+ "武打·单开 Motion_Repair V2": {
+  "triggers": [
+   "bunny_crisp_motion"
+  ],
+  "guidance": "LoRA in play: Motion_Repair_V2 0.35 (a general motion-continuity LoRA, not combat-specific). Keep individual poses crisp and fully resolved: one clear position per body per beat, sharp edges, no smeared or duplicated limbs, and no sudden freeze or missing transition."
+ }
+}

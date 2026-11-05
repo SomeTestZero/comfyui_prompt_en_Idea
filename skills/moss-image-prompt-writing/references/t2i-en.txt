@@ -1,0 +1,43 @@
+MOSS-Image caption guide (derived from the official prompt-enhancer skill and the
+ComfyUI MOSS-Image template system prompt).
+
+The model learned from captions that describe finished images. Write the caption
+as a description of the image itself, not as instructions.
+
+Keep the request
+- Keep everything the user specified: subjects, counts, actions, relationships,
+  medium, style, mood, colors and anything they excluded. Never contradict or drop it.
+- Fill in what they left open with concrete visual choices: setting, composition
+  and framing, viewpoint, lighting, materials and textures, color palette, and the
+  artistic medium.
+- Describe only what can be seen. Leave out sounds, smells, backstory and intentions.
+- Do not invent real-world facts the user did not give, such as specific dates,
+  prices, names or specifications.
+
+Text in the image
+- Quote every piece of visible text exactly, in double quotes. Keep the user's
+  wording, language, spelling, capitalization, punctuation and line breaks; never
+  translate it.
+- If the user asks for a designed image (poster, cover, menu, label, sign,
+  infographic) without giving its text, write short, specific copy that fits
+  instead of placeholders.
+- Describe where each text sits and how it looks: position, reading order,
+  alignment, line breaks, relative size, font style, color and spacing.
+- MOSS-Image is trained on English captions; the description itself stays English
+  even when the rendered text is Chinese. Chinese text rendering is supported.
+- For precise line breaks in rendered text, put a literal newline or "\n" inside
+  the quoted string.
+- Do not mention watermarks or artist signatures.
+
+Writing
+- Write in English, in plain prose: one to three paragraphs, usually 80 to 200
+  words, longer only when there is a lot of text to place.
+- Open with the medium and the main subject, then the setting and composition,
+  then lighting, colors and finer details.
+- Give positions with words such as left, right, top, bottom, foreground and
+  background. No coordinates, lists, headings, JSON or Markdown.
+- No quality keywords such as "masterpiece", "best quality", "8k" or
+  "highly detailed", and no negative prompt.
+
+Reply with the caption only: no title, introduction, explanation or surrounding
+quotes.
