@@ -8,12 +8,14 @@ from datetime import datetime
 from comfy_api.latest import io
 
 from .categories import PROMPT_ENHANCE
-from .common import append_history, find_history_entry, log, make_progress_cb
+from .common import append_history, find_history_entry, history_entry_options, log, make_progress_cb
 from .nodes_cloud import ENHANCE_MAX_TOKENS, chat, image_part, parse_model_option, require_vision
 from .nodes_swap import H3SwapPromptCloud, build_swap_user_text
+from .swap_contract import APPEARANCE_AUTHORITY, swap_writing_guide
 
 FPS = 24
-PLAN_VERSION = 1
+PLAN_VERSION = 2
+PROMPT_REVISION = 3
 PERSON = re.compile(r"\bP([1-9]\d*)\b")
 KINDS = {"action", "entrance", "exit", "lighting", "camera", "cut", "fade_in", "fade_out"}
 
@@ -34,17 +36,30 @@ nonempty unresolved with actionable reasons; do not silently pick a target. Spar
 Inspect each supplied sampling window, including its MC head overlap. present_people contains only the source
 people observed in that window, including someone present only in the overlap or someone entering mid-window.
 An absent person gets no local description and must not be spawned. Events for entrances/exits preserve source
-population, timing, occlusion and interaction. Source garments may change; follow user intent/reference without
-inventing wardrobe transitions. Neighboring windows inform identification and continuity only: do NOT move their
+population, timing, occlusion and interaction. P IDs ALWAYS describe the original source people, including
+in source description/start_state/end_state and event description. Never describe a replacement character
+as if it were observed in the source. These source fields are audit evidence and never sent to the video model.
+Separately write target_description/target_start_state/target_end_state for each segment and target_description
+for EVERY event. These target fields describe the desired EDITED output, not the original source. In target
+fields, P1/P2 still track the same performance roles, but a mapped person's appearance MUST come from its
+assigned reference and explicit user exceptions. Transfer motion and expressions, not original clothing/hair.
+For example, a source gold skirt flaring becomes the reference white robe moving with that turn; do not tell
+the replacement to wear the source gold skirt. Do not invent substitute actions to avoid wardrobe conflicts.
+Keep original descriptions in source fields for audit; never copy them into target fields unchanged when
+appearance conflicts. Unmapped people retain their source appearance. No morph, reveal or delayed swap:
+the mapped reference identity is already present at its first visible frame, including the opening frame.
+Follow explicit user requests for retained attributes. Neighboring windows inform identification and continuity only: do NOT move their
 events into this window. No segment is a standalone story with its own opening/ending.
 
 Write compact English descriptions with P1/P2 labels, never <Subject N> or <Picture N> tags; software binds labels.
 Keep user names/trigger words verbatim. Define each source identity and replacement identity once in cast. These descriptions contain identification
 cues only, with no timeline, action, lighting, scene or presence claims. Put source appearance changes in the
 local segments. A replacement description must not impose a fixed pose, expression, lighting or environment.
-Also return edit_instructions: a compact English list of the user's non-identity edits (e.g. remove the watermark).
-These are task instructions, not scene/lighting locks. Empty list when no additional edit was requested.
-Do not include P IDs or cinematic narrative in edit_instructions.
+Also return edit_instructions: a compact English list of the user's non-identity edits (e.g. remove the watermark)
+and any EXPLICIT user-requested appearance exceptions (e.g. keep P1's source outfit for a face-only swap).
+Use P IDs to scope an exception to the correct source person. Never infer an exception from source appearance,
+source motion, lighting or background. These are edit commands, not observations. Do not repeat the identity
+mapping or general preservation requests here; the renderer owns those. Empty list when none requested.
 For EVERY exact supplied window, return one segment with the SAME integer index/start_frame/end_frame/head_trim/
 deliver values. start_frame inclusive, end_frame exclusive; these include repeated-frame tail padding.
 description covers this window only, with no timestamps or whole-film duration. start_state/end_state describe
@@ -68,8 +83,11 @@ JSON schema (no additional keys needed):
  "segments":[{"index":1,"start_frame":0,"end_frame":141,"head_trim":0,"deliver":141,
  "present_people":["P1"], "description":"P1 performs the observed action; exact performance follows the source.",
  "start_state":"P1 ...", "end_state":"P1 ...",
+ "target_description":"P1 with the assigned reference appearance performs the observed action.",
+ "target_start_state":"P1 already has the reference appearance and faces the camera.",
+ "target_end_state":"P1 retains the reference appearance while turning.",
  "events":[{"kind":"action","start_frame":0,"end_frame":48,"evidence_frame":24,
- "description":"P1 ..."}]}]}
+ "description":"P1 ...", "target_description":"P1 performs this action with reference appearance."}]}]}
 """
 
 
@@ -137,8 +155,8 @@ def validate_plan(raw, windows, slots, observed, frame_count):
     if not isinstance(cast, list) or not cast or not isinstance(segments, list):
         raise ValueError("Swap plan: cast must be nonempty and segments must be a list.")
     edits = raw.get('edit_instructions')
-    if not isinstance(edits, list) or any(not isinstance(t, str) or not t.strip() or PERSON.search(t) for t in edits):
-        raise ValueError('Swap plan: edit_instructions must contain only non-identity user edits.')
+    if not isinstance(edits, list) or any(not isinstance(t, str) or not t.strip() for t in edits):
+        raise ValueError('Swap plan: edit_instructions must contain explicit user edit commands.')
     ids, assigned = set(), set()
     for i, person in enumerate(cast, 1):
         if not isinstance(person, dict) or person.get('person_id') != f'P{i}':
@@ -158,6 +176,8 @@ def validate_plan(raw, windows, slots, observed, frame_count):
         evidence = person.get('evidence_frames')
         if not isinstance(evidence, list) or not evidence or any(type(f) is not int or f not in observed for f in evidence):
             raise ValueError(f"Swap plan: P{i} needs observed source-frame evidence.")
+    if any({f'P{n}' for n in PERSON.findall(t)} - ids for t in edits):
+        raise ValueError('Swap plan: edit_instructions references an unknown source person.')
     if set(slots) != assigned:
         raise ValueError("Swap plan: unused reference mapping(s): " + ', '.join(sorted(set(slots) - assigned)))
     if len(segments) != len(windows):
@@ -172,7 +192,7 @@ def validate_plan(raw, windows, slots, observed, frame_count):
         if not isinstance(present, list) or any(not isinstance(p, str) for p in present) or len(set(present)) != len(present) or not set(present) <= ids:
             raise ValueError("Swap plan: present_people contains an unknown or duplicate person.")
         texts = []
-        for field in ('description', 'start_state', 'end_state'):
+        for field in ('description', 'start_state', 'end_state', 'target_description', 'target_start_state', 'target_end_state'):
             value = segment.get(field)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"Swap plan: segment {window['index']} needs {field}.")
@@ -193,7 +213,9 @@ def validate_plan(raw, windows, slots, observed, frame_count):
                 raise ValueError(f"Swap plan: segment {window['index']} {event['kind']} [{start},{end}) needs a sampled evidence_frame within its observed endpoints and real window; got {evidence}.")
             if not isinstance(event.get('description'), str) or not event['description'].strip():
                 raise ValueError("Swap plan: event description is empty.")
-            texts.append(event['description'])
+            if not isinstance(event.get('target_description'), str) or not event['target_description'].strip():
+                raise ValueError('Swap plan: event needs target_description for the edited output.')
+            texts.extend([event['description'], event['target_description']])
         for text in texts:
             mentioned = {f'P{n}' for n in PERSON.findall(text)}
             if not mentioned <= set(present):
@@ -214,46 +236,63 @@ def parse_plan(content, windows, slots, observed, frame_count):
 
 def render_segment(plan, segment):
     present = set(segment['present_people'])
-    people = {p['person_id']: p for p in plan['cast']}
     slots = plan['slots']
-    definitions, retention, edits = [], [], []
+    definitions, retention, edits, transfers = [], [], [], []
     for person in plan['cast']:
         pid = person['person_id']
         if pid not in present:
             continue
         n = int(pid[1:])
         source, replacement = f'<Subject {2*n}>', f'<Subject {2*n-1}>'
-        definitions.append(f"{source} is source person {pid}: {person['source_description']}")
         slot = person['reference_slot']
+        if slot is None or len(present) > 1:
+            definitions.append(f"{source} is the original source person {pid} in <Video 1>, identified for tracking only: {person['source_description']}")
+        else:
+            definitions.append(f'{source} is the sole source person in <Video 1> whose performance is transferred to the replacement.')
         if slot is None:
             retention.append(f'{source}: fully_preserved, including source appearance and performance.')
         else:
             picture = f'<Picture {slots.index(slot)+1}>'
             definitions.append(f"{replacement} is the replacement identity from {picture}: {person['replacement_description']}")
-            edits.append(f'Replace {source} with {replacement} whenever {pid} is visible in this source window.')
-            retention.extend([f'{source}: replaced only while present in the source.',
-                              f'{replacement}: attribute_transfer from {picture}; inherit the source performance, expression, position and visibility.'])
-    def bind(text):
+            edits.append(f'Replace {source} with {replacement} whenever {source} is visible in this source window.')
+            transfers.extend([
+                f'From the very first frame in which {source} is visible, {replacement} seamlessly replaces {source}, occupying the same position and performing its exact motion and expressions. Apply this throughout the window, including the MC overlap and later entrances.',
+                f'The face, hair, ears, outfit, proportions and distinguishing features of {replacement} come from {picture}, subject only to explicit user appearance exceptions below. Keep this appearance from the opening frame; no morph or transition from the original person.',
+                f'Keep the reference identity consistent through turns, occlusion and re-entry. Prevent identity drift, facial morphing, reverting to {source}, texture crawling and temporal flickering. Do not show both identities as separate people.',
+            ])
+            retention.extend([f'{source}: partially_preserved - performance, position and visibility are transferred; appearance is replaced unless explicitly retained by the user.',
+                              f'{replacement}: attribute_transfer of the complete reference identity from {picture}; inherit source performance, expressions, position and visibility.'])
+    def bind_target(text):
         def substitute(match):
-            person = people[f'P{match[1]}']
             n = int(match[1])
+            person = next(p for p in plan['cast'] if p['person_id'] == f'P{n}')
             return f'<Subject {2*n-1 if person["reference_slot"] is not None else 2*n}>'
         return PERSON.sub(substitute, text)
-    definitions.append('<Video 1> is ONLY the current source window, not the entire film. It supplies motion, expressions, camera, lighting, scene changes, population and timing.')
-    details = edits + plan['edit_instructions'] + [
+    def bind_source(text):
+        # Observations remain about the original person. Renaming P1 to the new
+        # identity also transfers source clothing/hair into the target prompt.
+        return PERSON.sub(lambda match: f'<Subject {2*int(match[1])}>', text)
+    local_edits = [bind_source(t) for t in plan['edit_instructions']
+                   if {f'P{n}' for n in PERSON.findall(t)} <= present]
+    definitions.extend([
+        '<Video 1> is the current source window being edited; it supplies performance, camera, scene and timing.',
+        '<Audio 1> is the synchronized source soundtrack, copied to the delivered edit.',
+    ])
+    details = edits + transfers + [
+        'Explicit user edit instructions: ' + (' '.join(local_edits) if local_edits else 'None.'),
         'Do not show the reference sheet or its background. Reference images supply identities, not additional people.',
         'Keep the source population and exact entrances, exits, occlusion and interactions at every frame. Never add an absent character or transfer identities between people.',
-        bind(segment['description']),
-        'Observed window opening: ' + bind(segment['start_state']),
-        'Observed window ending: ' + bind(segment['end_state']),
+        '[Shot 1] ' + bind_target(segment['target_description']),
+        'Opening target frame: ' + bind_target(segment['target_start_state']),
+        'Ending target frame: ' + bind_target(segment['target_end_state']),
     ]
     for event in segment['events']:
         start = (event['start_frame'] - segment['start_frame']) / FPS
         end = (event['end_frame'] - segment['start_frame']) / FPS
-        details.append(f'At local {start:.3f}-{end:.3f}s: {bind(event["description"])}')
+        details.append(f'At local {start:.3f}-{end:.3f}s: {bind_target(event["target_description"])}')
     details.extend([
-        'Follow the exact source performance frame by frame, including expressions, gaze, blinks and mouth movements. Keep replacement identity consistent without freezing expression.',
-        'Follow actual source changes in illumination, exposure, color, costume state, camera and environment; do not flatten them into constant conditions.',
+        'Follow the source pose, gaze, expression and movement while retaining the reference appearance.',
+        'Follow actual source changes in illumination, exposure, camera and environment. Apply their physical lighting and motion effects naturally to the reference appearance. Preserve source wardrobe and appearance changes for unassigned people; for replaced people, follow the reference and explicit user appearance exceptions.',
         'This window is part of a continuous source edit. Do not add an opening, closing, cut, fade or exposure ramp at a processing boundary. Reproduce such changes only where they are present in this current source window.',
     ])
     if segment['head_trim']:
@@ -263,15 +302,19 @@ def render_segment(plan, segment):
         details.append(f'The last {tail / FPS:.3f}s are repeated-source-frame padding outside delivery; hold the source tail naturally without inventing new events.')
     return '\n\n'.join([
         'subject_definitions:\n' + '\n'.join(definitions),
-        'summary:\n[video editing + reference generation] ' + (' '.join(edits) if edits else 'Preserve this source window; no replacement target is present.'),
-        'retention_analysis:\n' + '\n'.join(retention + ['<Video 1>: partially_preserved; apply only the requested edits.']),
+        'summary:\n[video editing + reference generation + audio reuse] The target video is an edited version of <Video 1>. ' + (' '.join(edits) if edits else 'Preserve this source window; no replacement target is present.'),
+        'retention_analysis:\n' + '\n'.join(retention + ['<Video 1>: partially_preserved - source performance, camera, scene and timing; apply only requested edits.', '<Audio 1>: fully_copy - reuse the original synchronized soundtrack.']),
         'detailed_description:\n' + '\n'.join(details),
-        'overall_soundscape:\nPreserve the original source audio and synchronization; do not invent dialogue, music or sound from sampled stills.',
-        'non_diegetic_music:\nN/A',
+        'overall_soundscape:\nReuse the original synchronized soundtrack from <Audio 1>; do not infer speech or sound from stills.',
+        'non_diegetic_music:\nReuse any source score through <Audio 1>; add no new music.',
     ])
 
 
 class H3SwapPromptPlan(io.ComfyNode):
+    @classmethod
+    def fingerprint_inputs(cls, **kwargs):
+        return PROMPT_REVISION
+
     @classmethod
     def define_schema(cls):
         schema = H3SwapPromptCloud.define_schema()
@@ -284,6 +327,9 @@ class H3SwapPromptPlan(io.ComfyNode):
             io.Int.Input('delivered_frames', default=481, min=5, max=100000, tooltip='接 P1 的 total_delivered，包含丢尾后的实际交付帧数。'),
             io.Float.Input('sample_interval', default=2.0, min=0.1, max=5.0, step=0.1, tooltip='每隔多少秒看一帧（24fps）。额外看各段首尾、头锚交界及交付末帧；短暂出入场可减到 0.5s。'),
         ])
+        for field in schema.inputs:
+            if field.id == 'history_entry':
+                field.options = history_entry_options(kind='swap_plan')
         schema.outputs = [io.String.Output(display_name='plan'), io.String.Output(display_name='cast_and_windows')]
         return schema
 
@@ -301,15 +347,20 @@ class H3SwapPromptPlan(io.ComfyNode):
         user_text = build_swap_user_text(instruction, len(refs), ['source frames listed below'], frame_count / FPS)
         user_text += '\nReference sockets: ' + json.dumps({slot: f'<Picture {i+1}>' for i, slot in enumerate(slots)})
         user_text += '\nExact MC windows: ' + json.dumps(windows)
+        user_text += '\nReal event bounds per window (exclusive end; padded frames are not events): ' + json.dumps([
+            dict(index=w['index'], start_frame=w['start_frame'], real_end_frame=min(w['end_frame'], frame_count))
+            for w in windows])
         user_text += '\nOnly source frames below were observed; unresolved target identities must be reported.'
         images = [image_part(frame) for _, frame in refs] + [image_part(source_frames[index]) for index in observed]
         fingerprint = hashlib.sha256(json.dumps(images, sort_keys=True).encode()).hexdigest()
         if history_entry != 'none':
-            entry = find_history_entry(history_entry)
+            entry = find_history_entry(history_entry, kind='swap_plan')
             if entry is None or entry.get('kind') != 'swap_plan' or entry.get('input') != instruction.strip():
                 raise ValueError('Swap plan: select a matching segmented-swap history entry, not a single-clip prompt.')
             content = entry['output']
             previous = json.loads(content)
+            if previous.get('version') != PLAN_VERSION:
+                raise ValueError('Swap plan: history predates separate target descriptions; regenerate the plan.')
             if previous.get('frame_count') != frame_count or previous.get('slots') != slots or previous.get('observed_frames') != observed or previous.get('fingerprint') != fingerprint:
                 raise ValueError('Swap plan: history source shape, sockets or observation interval differs; regenerate.')
         else:
@@ -322,10 +373,31 @@ class H3SwapPromptPlan(io.ComfyNode):
                 memberships = [w['index'] for w in windows if w['start_frame'] <= index < w['end_frame']]
                 user_content.extend([dict(type='text', text=f'SOURCE FRAME {index}, t={index / FPS:.3f}s, windows={memberships}'), images[image_index]])
             log(f'swap plan: {frame_count} source frames, {len(windows)} windows, {len(observed)} observations, interval={sample_interval:g}s')
-            content = chat(provider, model_id, PLAN_SYSTEM, user_content, temperature=temperature, seed=seed,
+            skill_body, guides = swap_writing_guide()
+            system = (PLAN_SYSTEM + '\n\n=== APPEARANCE AUTHORITY ===\n' + APPEARANCE_AUTHORITY
+                      + '\n\n=== SHARED CHARACTER-SWAP GUIDE ===\n' + skill_body + '\n'
+                      + '\n\n'.join(text for _, text in guides)
+                      + '\n\nThe guide defines edit semantics. For this analysis call output only the JSON schema above; '
+                        'P IDs describe source observations. The segment renderer assigns final Subject tags and six sections.')
+            content = chat(provider, model_id, system, user_content, temperature=temperature, seed=seed,
                            thinking=thinking == 'enabled', effort_choice=reasoning_effort, api_key=api_key,
                            max_tokens=ENHANCE_MAX_TOKENS, on_text=make_progress_cb(cls.hidden.unique_id))
-        plan = parse_plan(content, windows, slots, observed, frame_count)
+        try:
+            plan = parse_plan(content, windows, slots, observed, frame_count)
+        except (ValueError, TypeError) as exc:
+            if history_entry != 'none' or 'needs clearer target identification' in str(exc):
+                raise
+            # A correction uses the same observed images and exact window bounds.
+            # Never clamp invented events or accept a partially valid timeline.
+            log(f'swap plan validation failed; requesting one correction: {exc}')
+            correction = user_content + [dict(type='text', text=(
+                'Your previous JSON failed validation. Return a corrected COMPLETE plan, not a patch. '
+                'Keep the exact supplied window metadata and stay inside the REAL nonpadded event bounds. '
+                f'Validation error: {exc}\nPrevious JSON:\n{content}'))]
+            content = chat(provider, model_id, system, correction, temperature=temperature, seed=seed,
+                           thinking=thinking == 'enabled', effort_choice=reasoning_effort, api_key=api_key,
+                           max_tokens=ENHANCE_MAX_TOKENS, on_text=make_progress_cb(cls.hidden.unique_id))
+            plan = parse_plan(content, windows, slots, observed, frame_count)
         for slot, number in re.findall(r'\b(ref_?image_?\d+)\s*(?:替换|replaces?)\s*(?:(?:视频中)?的?)?\s*(?:人物\s*|P)(\d+)\b', instruction, re.I):
             slot = 'ref_image_' + re.search(r'\d+$', slot)[0]
             person = next((p for p in plan['cast'] if p['person_id'] == f'P{number}'), None)
@@ -335,7 +407,7 @@ class H3SwapPromptPlan(io.ComfyNode):
         plan['fingerprint'] = fingerprint
         encoded = json.dumps(plan, ensure_ascii=False)
         audit = '\n\n'.join([f"{p['person_id']} -> {p['reference_slot'] or 'preserve'}: {p['source_description']}\nReplacement: {p['replacement_description']}" for p in plan['cast']]
-                              + [f"Segment {s['index']}: source [{s['start_frame']},{s['end_frame']}), head={s['head_trim']}, deliver={s['deliver']}, present={','.join(s['present_people']) or 'empty'}\n{s['description']}\n" + '\n'.join(f"{e['kind']} [{e['start_frame']},{e['end_frame']}): {e['description']}" for e in s['events']) for s in plan['segments']])
+                              + [f"Segment {s['index']}: source [{s['start_frame']},{s['end_frame']}), head={s['head_trim']}, deliver={s['deliver']}, present={','.join(s['present_people']) or 'empty'}\nSource observation: {s['description']}\nEdited target: {s['target_description']}\n" + '\n'.join(f"{e['kind']} [{e['start_frame']},{e['end_frame']}): source={e['description']} | target={e['target_description']}" for e in s['events']) for s in plan['segments']])
         if history_entry == 'none':
             append_history(dict(ts=datetime.now().isoformat(timespec='seconds'), kind='swap_plan',
                                 task_type='cloud/characterswap_segments', model=f'{provider}/{model_id}',
@@ -344,6 +416,10 @@ class H3SwapPromptPlan(io.ComfyNode):
 
 
 class H3SwapSegmentPrompt(io.ComfyNode):
+    @classmethod
+    def fingerprint_inputs(cls, **kwargs):
+        return PROMPT_REVISION
+
     @classmethod
     def define_schema(cls):
         return io.Schema(node_id='H3SwapSegmentPrompt', display_name='[yyp] H3 Swap Segment Prompt 当前段换人提示词',

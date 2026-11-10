@@ -1,69 +1,57 @@
 # Character Replacement (Video Edit) Rewrite Output Format Guide
 
-This guide covers the video character replacement task: the target video is an edited version of a source video in which one person is replaced by a character from reference images, while motion, timing, camera, environment and audio are preserved.
+This is a local specialization of MiniMax's official `ref-en.txt`, not a separate official MiniMax skill. Read the official Ref2VA guide for section order, labels, retention markers, shot notation and audio roles. This document adds the source-performance/reference-appearance contract for character replacement.
 
-Write all six rewrite sections in English. Preserve dialogue, lyrics, and visible scene text in their original language.
+Sources:
+- Official format: https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/ref-en.txt
+- Adapter model card: https://huggingface.co/akatz-ai/MiniMax-H3-Character-Swap-LoRA
+- Adapter examples: https://huggingface.co/akatz-ai/MiniMax-H3-Character-Swap-LoRA/tree/main/examples
+
+The Akatz V1.5 adapter takes a source performance as `<Video 1>` and a reference identity as `<Picture N>`. Its example asks to keep the reference face, hair and clothing while following source pose, gaze, expression and movement. No extra trigger word is required. Its examples use direct requests; more preservation or expression wording is not a guarantee of stronger adherence. Sampling recipes are workflow settings, not prompt instructions.
 
 ## 0. Iron rules for this task
 
-1. **Reference roles are fixed.** `<Picture N>` = the replacement character's reference images (identity only: face, hairstyle, outfit, proportions, art style). `<Video 1>` = the source video; it owns every timestamp's motion, timing, camera movement, framing, lighting, environment and sound.
-2. **Subject bindings are fixed.** `<Subject 1>` = the replacement character, defined from `<Picture N>`. `<Subject 2>` = the original person in `<Video 1>` who is replaced. A preserved environment or preserved people get their own `<Subject N>` (rules 5-6).
-3. **Never invent appearance.** Describe only what is visibly in the reference images plus what the user explicitly states. NEVER translate, rename, or romanize character names or trigger words the user wrote - keep them verbatim. A reference picture is often a single multi-view character sheet (face close-up, full-body front, side, back in one image): read every view, then define `<Subject 1>` once from the composite - do not treat the views as separate people or separate pictures.
-4. **Resolve target identification to one unique person.** The user may identify the replacement target in any of three styles: rule-based ("the leftmost person", "the only man"), coded ("P1", "人物2" from a cast list the user assumes), or feature-based ("the woman in the red jacket"). Resolve each to one person visible in the sample frames, and write the `<Subject 2>` definition around **appearance invariants** (hair, build, outfit colors, distinguishing marks) with initial position as a secondary clue - never position alone. When the user gives codes, keep the code as a label in the definition (e.g. "<Subject 2> is the person designated P1: ...") and show the cast mapping in your own reading of the scene.
-5. **Positions change; identity does not.** When people cross, swap sides, or walk around (e.g. "P1 starts left of P2 and walks to P2's right"), state the motion explicitly in `detailed_description` and add a tracking clause: the same person remains the sole replacement target at every timestamp, before and after the crossing. Never re-identify anyone by current screen position mid-timeline.
-6. **Other people are preserved, never swapped.** In multi-person scenes, define each other person as `<Subject 3>`, `<Subject 4>`, ... with their visible disambiguators, and record them in `retention_analysis` as `fully_preserved`. Never transfer `<Subject 1>`'s features onto them; state explicitly that only `<Subject 2>` changes.
-7. **Entrances and exits go on the timeline.** When a person enters or leaves mid-take, declare it in `detailed_description` at its time position ("At 00:03, <Subject 3> enters from the right, unchanged") instead of treating the scene as static. Sample frames may show a varying cast; trust the frames for who exists and when.
-8. **Reuse the identity block verbatim across segments.** If this prompt is one of several replacement segments from the same source, copy the `<Subject 1>` definition word-for-word from the other segments - rewording it drifts the rendered identity between segments.
-9. **Reproduce the source performance, do not rewrite it.** Describe the action structure and key beats, and state that the exact per-frame motion follows `<Video 1>`. The performance includes the face: expressions, gaze, eyebrows, blinks, mouth shapes and micro-emotions follow `<Video 1>` frame by frame - identity comes from the pictures, expression comes from the video. Never invent new actions, camera moves, or scene changes.
-10. **Anti-copy clause (mandatory).** H3 tends to either reproduce the source person unchanged or animate the reference sheet itself. The prompt must command the replacement explicitly from the first frame, e.g. "From the very first frame, `<Subject 1>` seamlessly replaces `<Subject 2>`, occupying the exact spatial coordinates of `<Subject 2>` and performing the exact same motion." Include the explicit sentence "Do not show the reference sheet or its background."
-11. **Preserve collateral.** Objects held by the replaced person survive and stay in the same hands. The lighting of `<Video 1>` falls on `<Subject 1>` naturally (illumination, shadows, color temperature, exposure, depth of field, motion blur, camera angle, perspective).
-12. **Temporal consistency clause.** Identity, facial geometry, hairstyle, head size, outfit and proportions stay stable across every frame; explicitly prevent identity drift, facial morphing, reverting to `<Subject 2>`, texture crawling and flickering. **Stability applies to identity, not expression**: the face must still perform every smile, frown, eyebrow raise, glance, blink and lip movement of `<Video 1>`; never freeze the face into the reference sheet's neutral expression.
-13. **Shots.** If the source has hard cuts, write one `[Shot N]` paragraph per cut in timeline order; stamp "At MM:SS.mmm" when a runtime is given. Scale description detail to the runtime.
-14. `summary` starts with `[video editing + reference generation]`. `overall_soundscape` preserves the original audio and audiovisual timing; no modifications outside the replacement. `non_diegetic_music` is N/A unless the user asks for music.
-15. **Output ONLY the final prompt.** No explanations, no commentary, no markdown fences.
+1. **Appearance authority.** Reference pictures supply the replacement face, hair, ears, clothing, proportions, distinguishing features and art style. The source video supplies performance, expression, position, visibility, interactions, camera, lighting, environment and timing. Explicit user requests such as a face-only swap or retaining the source outfit override the default only for that attribute.
+2. **Subject bindings.** For a single replacement, `<Subject 1>` is the reference identity and `<Subject 2>` is the source person whose performance is transferred. Use stable labels for other people. Numbering stays unchanged through crossings, exits, re-entry and segment boundaries.
+3. **Source evidence and edited target are different.** Keep original appearance descriptions in the audit/analysis used to identify the source target. Final `detailed_description` describes the EDITED target with the reference identity already in place. Do not rename a source observation and thereby assign original clothing to the replacement. For example, source gold fabric flaring during a turn does not instruct the replacement to wear gold; describe the reference robe responding to that turn.
+4. **Identify the target uniquely.** Resolve rules, P codes or appearance-based instructions using the observed source cast. For multiple people, retain enough source identification cues to track the correct role; screen position alone is insufficient. For a sole source person, a long description of original clothes and hair is unnecessary in the final prompt.
+5. **Appearance comes only from supplied evidence.** Preserve user names and trigger words verbatim. A multi-view character sheet represents one identity; views are not extra people. Do not show the reference sheet or its background.
+6. **Only actual source population appears.** Preserve unassigned people and their appearance. Keep source entrances, exits, occlusions and interactions. Do not spawn a reference person in a window where its assigned source role is absent.
+7. **Anti-copy clause: replacement starts immediately.** From the first visible frame of the assigned source role, the reference identity occupies it. The opening frame is already replaced. Do not describe a reveal, morph, delayed swap, or transition from the original identity. After re-entry the reference identity remains the same.
+8. **Stable identity across segments.** Reuse the reference identity description verbatim. Prevent reverting to the original identity or appearance drift. Request source pose, gaze, expression and movement concisely; do not repeat a long list of per-frame expression constraints or freeze the reference face into its neutral card expression.
+9. **Local timeline.** Each segment describes only its actual source window. MC overlap is continuation, not a new opening. Do not repeat a full-film fade or ending in each window. Only source-supported cuts, light changes and events appear at their proper local times.
+10. **Collateral and physical response.** Preserve held objects and hand interactions. Apply source illumination and motion naturally to the reference appearance; source clothing does not become a target wardrobe lock. Do not invent new actions to resolve an outfit difference.
+11. **Official format.** Write all six sections in English; dialogue, lyrics and visible text retain the source language. Use official retention markers: `fully_preserved`, `partially_preserved`, `attribute_transfer`, `weak_reference`. Do not invent a `replaced` retention marker.
+12. **Audio.** If the source soundtrack is supplied and reused, define its synchronized `<Audio N>`, include `audio reuse` in the summary, and record `fully_copy`. Reuse existing score rather than claiming `N/A` when the source contains music. Do not infer new speech or music from sampled stills.
+13. **Output only the final prompt.** No commentary or code fences. When generating a structured analysis plan instead, keep source observations and target descriptions in separate fields; the renderer compiles target fields into the six-section prompt.
 
-## 1. Six-section structure
+## 1. Six-section example
 
-A complete rewrite output consists of six sections in this exact order:
-
-| Section | Purpose |
-| --- | --- |
-| `subject_definitions` | Defines `<Subject 1>`, `<Subject 2>`, `<Video 1>` (and any preserved `<Subject 3>`) |
-| `summary` | States the edit: replace only `<Subject 2>` with `<Subject 1>`, everything else preserved |
-| `retention_analysis` | `<Subject 1>` attribute_transfer / `<Subject 2>` replaced / `<Video 1>` partially_preserved |
-| `detailed_description` | The replacement command, action structure, shots, lighting, consistency clauses |
-| `overall_soundscape` | Original audio preserved |
-| `non_diegetic_music` | Usually N/A |
-
-## 2. Template
-
-Follow this shape; fill the bracketed parts from the pictures and the user's instruction.
+Adapt this to the actual references, user exceptions, source population and local timeline. Avoid repeating general rules as long instruction lists.
 
 ```text
 subject_definitions:
-<Subject 1> is the replacement character shown in <Picture 1>. [For a multi-view character sheet: state what each view supplies - face close-up, full-body front, side, back - then define once.] The facial identity, hairstyle, outfit, proportions and art style of <Subject 1> follow the reference.
-<Subject 2> is the original person in <Video 1> who must be replaced: [appearance invariants first, initial position second; keep any user code as a label, e.g. "the person designated P1"].
-<Subject 3> is [disambiguator] in <Video 1>, fully preserved: [only in multi-person scenes - one line per other person, and mirror them in retention_analysis as fully_preserved].
-<Video 1> is the source video. It owns the motion, timing, camera movement, framing, lighting, environment and sound of the target video.
+<Subject 1> is the character from <Picture 1>, with silver-blue hair, fox ears and a white robe with gold trim.
+<Subject 2> is the sole source person in <Video 1> whose performance is transferred to <Subject 1>.
+<Video 1> is the current source video window being edited.
+<Audio 1> is its synchronized original soundtrack, reused in the delivered edit.
 
 summary:
-[video editing + reference generation] The target video is an edited version of <Video 1>. Replace only <Subject 2> with <Subject 1>; everything else stays exactly as in <Video 1>.
+[video editing + reference generation + audio reuse] The target video is an edited version of <Video 1>. Replace only <Subject 2> with <Subject 1> while preserving the source performance, scene and timing.
 
 retention_analysis:
-<Subject 1> (appears throughout the target video): attribute_transfer - the complete identity from <Picture N>, including facial identity, hairstyle, outfit and proportions, is transferred consistently onto the role of <Subject 2>.
-<Subject 2> (appears throughout the target video): replaced - the role, position, scale, pose, motion, gestures, facial expressions and timing of <Subject 2> are now performed by <Subject 1>.
-<Video 1> (entire target timeline): partially_preserved - original timing, body motion, camera movement, framing, lighting, background, environment, scene composition and audio are preserved; only the appearance of the replaced person is changed.
+<Subject 1>: attribute_transfer - reference face, hair, outfit and proportions define the replacement.
+<Subject 2>: partially_preserved - source performance, position and visibility are transferred; appearance changes to the reference identity.
+<Video 1>: partially_preserved - retain source camera, lighting, background, population and timing while applying requested edits.
+<Audio 1>: fully_copy - reuse the synchronized source soundtrack.
 
 detailed_description:
-Preserve <Video 1> as the complete temporal and compositional foundation of the target video. From the very first frame, <Subject 1> seamlessly replaces <Subject 2>, occupying the exact spatial coordinates of <Subject 2> and performing the exact same motion, gestures, facial expressions, gaze, blinks, mouth shapes, micro-expressions, weight shifts, rhythm and interaction with the environment. Do not show the reference sheet or its background.
-[Shot 1] At [MM:SS.mmm] [action structure and key beats of this shot; exact per-frame motion follows <Video 1>]. One paragraph per camera cut, in timeline order.
-Maintain anatomically correct scale and a natural connection between <Subject 1> and the preserved body, clothing and props of <Video 1>. Objects held by the replaced person survive and remain in the same hands.
-Preserve the lighting of <Video 1> on <Subject 1>: the character responds naturally to illumination, shadows, color temperature, exposure, depth of field, motion blur, camera angle and perspective changes.
-Maintain strong temporal consistency across every frame. The identity, facial geometry, hairstyle, head size, outfit and distinguishing features of <Subject 1> remain stable during motion and viewpoint changes. Prevent identity drift, facial morphing, reverting to <Subject 2>, texture crawling, temporal flickering or any sudden change in appearance. The identity is stable across frames; the expression is not: every smile, frown, eyebrow raise, glance, blink and lip movement visible in <Video 1> appears on <Subject 1> at the same timestamp. Do not settle into a neutral or static face.
+From its first visible frame, <Subject 1> already occupies the source role with the complete reference appearance. Keep this identity through turns and occlusion; do not morph from or revert to <Subject 2>. Do not show the reference sheet or its background.
+[Shot 1] <Subject 1>, with silver-blue hair, fox ears and the white-and-gold reference robe, dances alone on the dark stage under the source spotlight. She opens her arms, turns into profile and steps forward; the white robe and silver-blue hair respond naturally to the turn. Follow the source pose, gaze, expression and movement. Preserve source framing, background and actual light changes. Remove the requested watermark.
 
 overall_soundscape:
-Preserve the original audio, dialogue and audiovisual timing of <Video 1>. No modifications outside the replacement of <Subject 2>.
+Reuse the synchronized source soundtrack from <Audio 1>; add no new speech or sound.
 
 non_diegetic_music:
-N/A
+Reuse any source score through <Audio 1>; add no new music.
 ```

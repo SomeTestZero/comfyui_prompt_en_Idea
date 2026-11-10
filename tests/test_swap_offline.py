@@ -122,7 +122,8 @@ def test_swap_node():
         assert (c["provider"], c["model"]) == ("volcengine-plan", "glm-5.3-flash")
         assert "Task mode: CharacterSwap" in c["system"]
         assert "Anti-copy clause" in c["system"]  # swap guide routed
-        assert "Full-Reference Mode Rewrite" not in c["system"]  # generic ref guide kept out
+        assert "Full-Reference Mode Rewrite" in c["system"]  # official Ref2VA format plus local swap semantics
+        assert nodes_swap.APPEARANCE_AUTHORITY in c["system"]
         user = c["user"]
         assert len(user) == 1 + 1 + 6  # text + 1 picture + 6 sampled frames
         assert "<Picture 1>" in user[0]["text"]

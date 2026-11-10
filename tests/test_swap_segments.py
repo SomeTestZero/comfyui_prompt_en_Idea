@@ -28,9 +28,12 @@ def fixture_plan():
     for i, window in enumerate(windows):
         raw['segments'].append(dict(**window, present_people=['P1'] if i == 0 else ['P1', 'P2'],
                                    description='P1 turns in the source lighting.', start_state='P1 faces left.',
-                                   end_state='P1 turns toward the door.', events=[]))
+                                   end_state='P1 turns toward the door.',
+                                   target_description='P1 turns in the source lighting.',
+                                   target_start_state='P1 faces left.', target_end_state='P1 turns toward the door.', events=[]))
     raw['segments'][-1]['events'] = [dict(kind='fade_out', start_frame=456, end_frame=481,
-                                         evidence_frame=480, description='The source image fades out here.')]
+                                         evidence_frame=480, description='The source image fades out here.',
+                                         target_description='The source image fades out here.')]
     return windows, observed, raw
 
 
@@ -57,7 +60,9 @@ def test_absent_person_does_not_leak_and_reference_ids_stay_stable():
     assert 'Remove the source watermark.' in first
     second = plan['segments'][1]
     second.update(present_people=['P2'], description='P2 enters from the right.',
-                  start_state='P2 is offscreen until the source entrance.', end_state='P2 stands in cold light.')
+                  start_state='P2 is offscreen until the source entrance.', end_state='P2 stands in cold light.',
+                  target_description='P2 enters from the right.', target_start_state='P2 is offscreen until the source entrance.',
+                  target_end_state='P2 stands in cold light.')
     text = swap.render_segment(plan, second)
     assert '<Picture 2>' in text and '<Picture 1>' not in text
     assert '<Subject 3>' in text and '<Subject 4>' in text
@@ -93,7 +98,7 @@ def test_invalid_plan_stops_before_sampling(problem):
 def test_evidence_at_action_endpoint_is_valid_but_other_windows_are_not():
     windows, observed, raw = fixture_plan()
     raw['segments'][0]['events'] = [dict(kind='action', start_frame=0, end_frame=48,
-                                       evidence_frame=48, description='P1 lifts both hands.')]
+                                       evidence_frame=48, description='P1 lifts both hands.', target_description='P1 lifts both hands.')]
     swap.validate_plan(raw, windows, ['ref_image_0', 'ref_image_1'], observed, 481)
     raw['segments'][0]['events'][0].update(end_frame=141, evidence_frame=141)
     with pytest.raises(ValueError, match='real window'):
@@ -104,11 +109,29 @@ def test_empty_window_does_not_spawn_any_reference_person():
     plan = validated()
     segment = plan['segments'][0]
     segment.update(present_people=[], description='The source shows an empty corridor.',
-                   start_state='Empty corridor.', end_state='Light gradually changes in the empty corridor.')
+                   start_state='Empty corridor.', end_state='Light gradually changes in the empty corridor.',
+                   target_description='The source shows an empty corridor.', target_start_state='Empty corridor.',
+                   target_end_state='Light gradually changes in the empty corridor.')
     text = swap.render_segment(plan, segment)
     assert '<Picture' not in text and '<Subject' not in text
     assert 'no replacement target is present' in text
     assert 'Light gradually changes' in text
+
+
+@pytest.mark.parametrize('field', ['target_description', 'target_start_state', 'target_end_state'])
+def test_plan_requires_edited_target_separate_from_source_evidence(field):
+    windows, observed, raw = fixture_plan()
+    del raw['segments'][0][field]
+    with pytest.raises(ValueError, match=field):
+        swap.validate_plan(raw, windows, ['ref_image_0', 'ref_image_1'], observed, 481)
+
+
+def test_picker_rejects_legacy_plan_before_sampling():
+    node = swap.H3SwapSegmentPrompt.PREPARE_CLASS_CLONE(None)
+    plan = validated()
+    plan['version'] = 1
+    with pytest.raises(ValueError, match='unsupported plan version'):
+        node.execute(json.dumps(plan), 1, 0, 141, 0, 141)
 
 
 def test_picker_rejects_changed_segment_plan():
@@ -136,14 +159,16 @@ def test_planner_one_cloud_call_labels_images_and_history(monkeypatch, tmp_path)
                   ref_images={'ref_image_0':[torch.zeros(1,8,8,3)], 'ref_image_1':[torch.ones(1,8,8,3)]})
     result = node.execute(**kwargs)
     assert len(calls) == 1
+    assert 'Anti-copy clause' in calls[0][0][2]
+    assert swap.APPEARANCE_AUTHORITY in calls[0][0][2]
     content = calls[0][0][3]
     assert len([p for p in content if p['type']=='image_url']) == 22
     assert any('SOURCE FRAME 119' in p.get('text','') for p in content)
     assert 'Segment 1' in result.result[1] and 'ref_image_1' in result.result[1]
     entry = common.read_history()[0]
     assert entry['kind'] == 'swap_plan'
-    monkeypatch.setattr(swap, 'find_history_entry', lambda _: entry)
-    replay = node.execute(**kwargs, history_entry='saved')
+    # Exercise the real history lookup: its default kind is 'optimize'.
+    replay = node.execute(**kwargs, history_entry=common.history_label(entry))
     assert replay.result[0] == result.result[0] and len(calls) == 1
     reversed_raw = copy.deepcopy(raw)
     reversed_raw['cast'][0]['reference_slot'] = 'ref_image_1'
@@ -153,10 +178,94 @@ def test_planner_one_cloud_call_labels_images_and_history(monkeypatch, tmp_path)
         node.execute(**kwargs)
     kwargs['source_frames'] = torch.ones(481,8,8,3)
     with pytest.raises(ValueError, match='differs'):
-        node.execute(**kwargs, history_entry='saved')
+        node.execute(**kwargs, history_entry=common.history_label(entry))
 
 
-def test_schema_registration():
+def test_source_clothing_stays_source_evidence_not_replacement_appearance():
+    plan = validated()
+    segment = plan['segments'][0]
+    segment.update(description='P1 turns with her gold skirt billowing.',
+                   start_state='P1 has pale-blonde hair and a silver halter top.',
+                   end_state='P1 raises both arms.',
+                   target_description='P1 turns in the white reference robe.',
+                   target_start_state='P1 has the red hair of the reference.', target_end_state='P1 raises both arms.')
+    text = swap.render_segment(plan, segment)
+    assert '[Shot 1] <Subject 1> turns in the white reference robe.' in text
+    assert 'gold skirt' not in text and 'silver halter' not in text and 'pale-blonde' not in text
+    assert 'From the very first frame in which <Subject 2> is visible, <Subject 1> seamlessly replaces' in text
+    assert 'The face, hair, ears, outfit, proportions and distinguishing features of <Subject 1> come from <Picture 1>' in text
+    assert 'reverting to <Subject 2>' in text
+    assert 'color, costume state' not in text
+    # Rendering must not rewrite the evidence used for tracking or replay.
+    assert segment['description'] == 'P1 turns with her gold skirt billowing.'
+
+
+def test_explicit_appearance_exception_is_scoped_and_does_not_spawn_absent_person():
+    windows, observed, raw = fixture_plan()
+    raw['edit_instructions'] += ["Keep P2's source outfit; replace only the face and hair."]
+    plan = swap.validate_plan(raw, windows, ['ref_image_0', 'ref_image_1'], observed, 481)
+    first = swap.render_segment(plan, plan['segments'][0])
+    second = swap.render_segment(plan, plan['segments'][1])
+    assert "Keep <Subject 4>'s source outfit" not in first
+    assert "Keep <Subject 4>'s source outfit" in second
+    assert 'explicit user appearance exceptions' in second
+    assert '<Subject 3> is the replacement identity from <Picture 2>' in second
+    raw['edit_instructions'] += ['Keep P9 unchanged.']
+    with pytest.raises(ValueError, match='unknown source person'):
+        swap.validate_plan(raw, windows, ['ref_image_0', 'ref_image_1'], observed, 481)
+
+
+def test_preserved_person_keeps_source_appearance_and_performance():
+    plan = validated()
+    plan['cast'][1].update(reference_slot=None, replacement_description='')
+    segment = plan['segments'][1]
+    segment.update(description='P1 crosses behind P2 in a green coat.',
+                   start_state='P2 holds a red umbrella.', end_state='P1 exits left while P2 stays.',
+                   target_description='P1 crosses behind P2 in a green coat.',
+                   target_start_state='P2 holds a red umbrella.', target_end_state='P1 exits left while P2 stays.')
+    text = swap.render_segment(plan, segment)
+    assert '<Subject 4>: fully_preserved, including source appearance and performance.' in text
+    assert '<Subject 1> crosses behind <Subject 4> in a green coat.' in text
+    assert '<Subject 4> holds a red umbrella.' in text
+    assert '<Picture 2>' not in text
+    assert 'reverting to <Subject 4>' not in text
+
+
+def test_cloud_plan_corrects_invalid_timeline_once_before_returning(monkeypatch, tmp_path):
+    from h3_prompt_enhancer import common
+    windows, _, raw = fixture_plan()
+    invalid = copy.deepcopy(raw)
+    invalid['segments'][-1]['events'][0]['end_frame'] = windows[-1]['end_frame']
+    responses = iter([json.dumps(invalid), json.dumps(raw)])
+    calls = []
+    monkeypatch.setattr(swap, 'chat', lambda *a, **kw: calls.append(a) or next(responses))
+    monkeypatch.setattr(swap, 'make_progress_cb', lambda _: None)
+    monkeypatch.setattr(swap, 'image_part', lambda _: {'type':'image_url', 'image_url':{'url':'test'}})
+    monkeypatch.setattr(common, 'HISTORY_PATH', str(tmp_path/'history.jsonl'))
+    node = swap.H3SwapPromptPlan.PREPARE_CLASS_CLONE(None)
+    kwargs = dict(instruction='replace P1 and P2', model='workbuddy/deepseek-v4.1-flash',
+                  thinking='enabled', temperature=0.7, seed=0, sample_length=141, context_length=22,
+                  delivered_frames=481, source_frames=torch.zeros(481,8,8,3),
+                  ref_images={'ref_image_0':[torch.zeros(1,8,8,3)], 'ref_image_1':[torch.zeros(1,8,8,3)]})
+    result = node.execute(**kwargs)
+    assert len(calls) == 2 and 'Validation error' in calls[1][3][-1]['text']
+    assert json.loads(result.result[0])['segments'][-1]['events'][0]['end_frame'] == 481
+    assert len(common.read_history()) == 1
+    monkeypatch.setattr(swap, 'chat', lambda *a, **kw: json.dumps(invalid))
+    with pytest.raises(ValueError, match='real source window'):
+        node.execute(**kwargs)
+    assert len(common.read_history()) == 1  # failed correction never becomes reusable history
+
+
+def test_schema_registration_and_plan_history_kind(monkeypatch):
+    from h3_prompt_enhancer import common
+    monkeypatch.setattr(common, 'read_history', lambda: [
+        dict(ts='1', kind='swap_plan', task_type='segments', input='swap'),
+        dict(ts='2', kind='optimize', task_type='other', input='story'),
+    ])
     schema = swap.H3SwapPromptPlan.define_schema()
     assert schema.node_id == 'H3SwapPromptPlan'
     assert len(schema.outputs) == 2
+    history = next(field for field in schema.inputs if field.id == 'history_entry')
+    assert any('segments' in option for option in history.options)
+    assert not any('story' in option for option in history.options)

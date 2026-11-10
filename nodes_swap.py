@@ -26,7 +26,7 @@ from .nodes_cloud import (
     parse_model_option,
     require_vision,
 )
-from .skills import load_skill
+from .swap_contract import APPEARANCE_AUTHORITY, swap_writing_guide
 from .categories import PROMPT_ENHANCE
 
 SWAP_MODE = "CharacterSwap"
@@ -201,13 +201,14 @@ class H3SwapPromptCloud(io.ComfyNode):
             pairs.append((source_frames[i], f"source video sample at {lab}"))
         require_vision(provider, model_id, pairs)
 
-        skill_body, refs = load_skill("h3-prompt-writing", SWAP_MODE)
+        skill_body, refs = swap_writing_guide()
         system = SWAP_SYSTEM.format(
             image_note=swap_image_note(picture_count, len(labels)),
             skill_body=skill_body,
             ref_names=" + ".join(n for n, _ in refs) or "none",
             ref_text="\n\n".join(t for _, t in refs),
         )
+        system += '\n\n=== APPEARANCE AUTHORITY ===\n' + APPEARANCE_AUTHORITY
         user_content = [{"type": "text", "text": user_text}] + [image_part(f) for f, _ in pairs]
 
         try:
