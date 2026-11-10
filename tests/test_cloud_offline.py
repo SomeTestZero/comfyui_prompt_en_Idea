@@ -403,6 +403,44 @@ def test_enhancer_cloud_lora_preset():
         os.unlink(hist)
     print("enhancer_cloud_lora_preset OK")
 
+def test_enhancer_only_receives_current_segment_keyframes(monkeypatch):
+    import torch
+    from h3_prompt_enhancer import common
+
+    captured = []
+    monkeypatch.setattr(nodes_cloud, 'chat', lambda *a, **kw: captured.append(a[3]) or 'prompt')
+    monkeypatch.setattr(nodes_cloud, 'image_part', lambda frame: {'type': 'image_url', 'tag': float(frame.mean())})
+    monkeypatch.setattr(common, 'append_history', lambda _: None)
+    monkeypatch.setattr(nodes_cloud, 'append_history', lambda _: None)
+    node = nodes_cloud.H3PromptEnhancerCloud.PREPARE_CLASS_CLONE(None)
+    first = torch.ones(1, 8, 8, 3)
+    last = torch.full((1, 8, 8, 3), 2.0)
+    ref = torch.zeros(1, 8, 8, 3)
+    for index, expected in [(1, [0.0, 1.0]), (2, [0.0]), (3, [0.0, 2.0])]:
+        node.execute(prompt='current segment only', task_type='Auto', skill='h3-prompt-writing',
+                     model='workbuddy/deepseek-v4.1-flash', thinking='disabled', temperature=0.7, seed=1,
+                     first_frame=first, last_frame=last, reference_images={'ref_image_0':ref},
+                     clip_index=index, total_segments=3)
+        assert [item['tag'] for item in captured[-1] if item['type']=='image_url'] == expected
+    node.execute(prompt='single clip', task_type='Auto', skill='h3-prompt-writing',
+                 model='workbuddy/deepseek-v4.1-flash', thinking='disabled', temperature=0.7, seed=1,
+                 first_frame=first, last_frame=last, reference_images={'ref_image_0':ref})
+    assert [item['tag'] for item in captured[-1] if item['type']=='image_url'] == [0.0, 1.0, 2.0]
+
+
+def test_segment_beat_timeline_accounts_for_mc_head():
+    from h3_prompt_enhancer.nodes_idea import H3SegmentBeatPicker
+    node = H3SegmentBeatPicker.PREPARE_CLASS_CLONE(None)
+    sheet = '段1：A runs.\n段末：A reaches the door.\n段2：A opens it and speaks.'
+    first = node.execute(sheet, 1, '13.7, 6.4', overlap_frames=22).result[0]
+    second = node.execute(sheet, 2, '13.7, 6.4', overlap_frames=22).result[0]
+    assert '时间码从本段 0 秒记起' in first
+    assert '局部 0–0.917 秒' in second
+    assert '从局部 0.917 秒开始' in second
+    assert '头锚结束后的新内容必须' in second
+    assert 'A runs.' not in second and 'A opens it' in second
+
+
 if __name__ == "__main__":
     test_parse_and_options()
     test_resolve_provider_and_key()

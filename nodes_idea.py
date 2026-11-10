@@ -380,12 +380,14 @@ class H3SegmentBeatPicker(io.ComfyNode):
                 io.String.Input("beat_sheet", multiline=True, default="", tooltip="The idea generator's draft in beat-sheet mode (labels 段1/段2/... or Segment 1/2/...). Linked input hides the box; widget kept so saved workflows round-trip."),
                 io.Int.Input("clip_index", default=1, min=1, max=99, tooltip="Which segment's beat to emit (1-based, same convention as the H3 Chain Frame Planner / MotionContext)."),
                 io.String.Input("segment_durations", default="", optional=True, tooltip="Optional, wire the planner's segment_durations (comma-separated story seconds per segment): the segment note states this segment's real story time so the enhancer schedules within it. Empty = omit the duration."),
+                io.Int.Input("overlap_frames", default=0, min=0, max=362, optional=True,
+                             tooltip="MC 头锚帧数（24fps）；续段新内容时间码从头锚结束处开始。无头锚保留0。"),
             ],
             outputs=[io.String.Output(display_name="segment_prompt")],
         )
 
     @classmethod
-    def execute(cls, beat_sheet, clip_index, segment_durations=""):
+    def execute(cls, beat_sheet, clip_index, segment_durations="", overlap_frames=0):
         setup_lines = []
         beats = {}
         current = None
@@ -435,6 +437,14 @@ class H3SegmentBeatPicker(io.ComfyNode):
 
         cont = "；画面与动作紧接上一段结尾无缝继续" if clip_index > 1 else "（开场段）"
         note = f"本段：一镜到底长镜头的第 {clip_index}/{total} 段{seg}，时间码从本段 0 秒记起{cont}。"
+        if clip_index > 1 and overlap_frames:
+            head_seconds = overlap_frames / 24.0
+            sampled = f"，完整采样窗口约 {secs[clip_index - 1] + head_seconds:.3f} 秒" if durations else ""
+            note = (f"本段：一镜到底长镜头的第 {clip_index}/{total} 段；交付的新内容{seg}{sampled}。"
+                    f"局部 0–{head_seconds:.3f} 秒是上一段末尾的 Motion Context 头锚，生成后裁掉。"
+                    f"新段文的事件从局部 {head_seconds:.3f} 秒开始编排；不要把新动作或对白排入头锚。"
+                    "头锚内保留既有运动，新内容紧接其末尾推进；不重演上一段剧情。")
+            prev = prev.replace("本段第一帧必须从这一状态直接继续", "头锚结束后的新内容必须从这一状态直接继续")
         out = f"{setup}\n\n{prev}{note}\n{beat}"
         log(f"beat pick: segment {clip_index}/{total} ({len(out)} chars)")
         return io.NodeOutput(out)

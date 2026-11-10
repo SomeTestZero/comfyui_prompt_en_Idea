@@ -426,6 +426,10 @@ class H3PromptEnhancerCloud(io.ComfyNode):
                 io.Combo.Input("history_entry", options=history_entry_options(), default="none", optional=True, tooltip="Replay a stored run (local or cloud) instead of calling the API. List refreshes when the node is created or the page reloads."),
                 io.String.Input("api_key", default="", optional=True, tooltip="API key for the selected provider, overriding config.json and the environment variable for this run."),
                 io.Combo.Input("lora_preset", options=lora_preset_options(), default=LORA_PRESET_NONE, optional=True, tooltip="这次生成挂了哪几颗 LoRA：选中后增强器会把该 LoRA 的触发词逐字写进提示词，并按它的特性约束动作写法。预设数据在 lora_presets.json（与官方 skill 分开，skill 保持原样）。  拳脚/兵器 = Fight_Flow 的交互触发词；·稳 档不注入 Combat 的强度触发词（作者口径：无触发动作最稳），·强打 档加 prfight2（更快更狠，人体稳定性下降）；单开档用于排查哪颗 LoRA 让画面乱。改了 json 需刷新页面才会重读列表。"),
+                io.Int.Input("clip_index", default=1, min=1, max=9999, optional=True,
+                             tooltip="当前段号；首帧只约束第1段。单段保留1。"),
+                io.Int.Input("total_segments", default=1, min=1, max=9999, optional=True,
+                             tooltip="全块段数；尾帧只约束最后一段，不提前带入中间段。"),
             ],
             outputs=[
                 io.String.Output(display_name="enhanced_prompt"),
@@ -437,7 +441,8 @@ class H3PromptEnhancerCloud(io.ComfyNode):
     @classmethod
     def execute(cls, prompt, task_type, skill, model, thinking, temperature, seed,
                 reasoning_effort="low", first_frame=None, last_frame=None,
-                reference_images=None, history_entry="none", api_key="", lora_preset=LORA_PRESET_NONE):
+                reference_images=None, history_entry="none", api_key="", lora_preset=LORA_PRESET_NONE,
+                clip_index=1, total_segments=1):
         if history_entry != "none":
             e = find_history_entry(history_entry)
             if e is None:
@@ -446,6 +451,13 @@ class H3PromptEnhancerCloud(io.ComfyNode):
             return io.NodeOutput(e.get("output", ""), replay_entry_mode(e, task_type))
 
         provider, model_id = parse_model_option(model)
+        if not 1 <= clip_index <= total_segments:
+            raise ValueError("clip_index must be within total_segments.")
+        # Block keyframes constrain only the sampling window that actually contains them.
+        if clip_index > 1:
+            first_frame = None
+        if clip_index < total_segments:
+            last_frame = None
         mode = derive_mode(first_frame, last_frame, reference_images) if task_type == "Auto" else task_type
         frames = collect_frames(mode, first_frame, last_frame, reference_images)
         require_vision(provider, model_id, frames)
