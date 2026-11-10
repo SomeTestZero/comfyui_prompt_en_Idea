@@ -17,6 +17,7 @@ from .nodes_moss import MOSSPromptEnhancerCloud, MOSSPromptEnhancerLocal
 from .nodes_profiler import LoraProfilerLocal
 from .nodes_scail2 import SCAIL2PromptGenerator, SCAIL2SegmentPlan
 from .nodes_swap import H3SwapPromptCloud
+from .nodes_swap_segments import H3SwapPromptPlan, H3SwapSegmentPrompt
 from .nodes_universal import UniversalPromptEnhancerLocal
 
 apply_unload_hook()
@@ -45,6 +46,8 @@ class H3PromptEnhancerExtension(ComfyExtension):
             MOSSPromptEnhancerLocal,
             MOSSPromptEnhancerCloud,
             H3SwapPromptCloud,
+            H3SwapPromptPlan,
+            H3SwapSegmentPrompt,
             UniversalImageInterrogatorCloud,
             SCAIL2SegmentPlan,
             SCAIL2PromptGenerator,
